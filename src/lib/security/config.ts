@@ -1,14 +1,14 @@
 export const securityConfig = {
   // JWT Configuration
   jwt: {
-    secret: process.env.JWT_SECRET || 'your-super-secret-key-change-in-production',
+    secret: process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET,
     expiresIn: '15m',
     refreshExpiresIn: '7d',
   },
   
   // Session Configuration
   session: {
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 24 * 60 * 60, // 24 hours
     updateAge: 24 * 60 * 60, // 24 hours
   },
   

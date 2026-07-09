@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 
 interface Customer {
   id: string
@@ -14,6 +15,8 @@ interface Customer {
 const emptyForm = { name: '', email: '', phone: '', address: '' }
 
 export default function CustomersPage() {
+  const { data: session } = useSession()
+  const canManage = ['ADMIN', 'MANAGER'].includes(session?.user?.role || '')
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -171,15 +174,17 @@ export default function CustomersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
           <p className="text-sm text-gray-500 mt-1">Manage your customer database</p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          Add Customer
-        </button>
+        {canManage && (
+          <button
+            onClick={openAddModal}
+            className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Add Customer
+          </button>
+        )}
       </div>
 
       {error && (
@@ -276,18 +281,22 @@ export default function CustomersPage() {
                       {new Date(customer.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => openEditModal(customer)}
-                        className="text-indigo-600 hover:text-indigo-900 mr-4 transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(customer.id)}
-                        className="text-red-600 hover:text-red-900 transition-colors"
-                      >
-                        Delete
-                      </button>
+                      {canManage && (
+                        <>
+                          <button
+                            onClick={() => openEditModal(customer)}
+                            className="text-indigo-600 hover:text-indigo-900 mr-4 transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(customer.id)}
+                            className="text-red-600 hover:text-red-900 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

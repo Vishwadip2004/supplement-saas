@@ -12,6 +12,9 @@ export interface AuditLog {
   status: 'success' | 'failure' | 'warning'
 }
 
+let consecutiveFailures = 0
+const ALERT_THRESHOLD = 5
+
 export class AuditLogger {
   private static mapStatus(status: AuditLog['status']): AuditStatus {
     const statusMap: Record<AuditLog['status'], AuditStatus> = {
@@ -37,9 +40,14 @@ export class AuditLogger {
           timestamp: new Date(),
         },
       })
+      consecutiveFailures = 0
     } catch (error) {
+      consecutiveFailures++
       console.error('Audit log failed:', error)
-      // Don't throw - audit logging should never break the main flow
+      
+      if (consecutiveFailures >= ALERT_THRESHOLD) {
+        console.error(`[SECURITY ALERT] Audit logging has failed ${consecutiveFailures} times consecutively. Immediate attention required.`)
+      }
     }
   }
   

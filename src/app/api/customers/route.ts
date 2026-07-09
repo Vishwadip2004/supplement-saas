@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { customerSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
+import { setCorsHeaders } from '@/lib/cors'
 
 const rateLimit = new Map<string, { count: number; lastReset: number }>()
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000
@@ -52,15 +53,16 @@ export async function GET(request: Request) {
     const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
-    const where = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' as const } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-            { phone: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {}
+    const where = {
+      isActive: true,
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' as const } },
+          { email: { contains: search, mode: 'insensitive' as const } },
+          { phone: { contains: search, mode: 'insensitive' as const } },
+        ],
+      }),
+    }
 
     const [customers, total] = await Promise.all([
       prisma.customer.findMany({
@@ -74,10 +76,11 @@ export async function GET(request: Request) {
 
     const pages = Math.ceil(total / limit)
     
-    return NextResponse.json({
+    const response = NextResponse.json({
       data: customers,
       pagination: { page, limit, total, pages },
     })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch customers:', error)
     return NextResponse.json(
@@ -114,7 +117,15 @@ export async function POST(request: Request) {
   }
   
   try {
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
     const validation = validateInput(customerSchema, body)
     
     if (!validation.success) {
@@ -136,7 +147,8 @@ export async function POST(request: Request) {
       { name: customer.name, email: customer.email }
     )
     
-    return NextResponse.json(customer, { status: 201 })
+    const response = NextResponse.json(customer, { status: 201 })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to create customer:', error)
     return NextResponse.json(

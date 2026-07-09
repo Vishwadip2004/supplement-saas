@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { saleSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
+import { setCorsHeaders } from '@/lib/cors'
 
 const rateLimit = new Map<string, { count: number; lastReset: number }>()
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
       prisma.sale.count({ where }),
     ])
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       data: sales,
       pagination: {
         page,
@@ -83,6 +84,7 @@ export async function GET(request: Request) {
         pages: Math.ceil(total / limit),
       },
     })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch sales:', error)
     return NextResponse.json(
@@ -119,7 +121,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
     const validation = validateInput(saleSchema, body)
 
     if (!validation.success) {
@@ -129,13 +139,13 @@ export async function POST(request: Request) {
       )
     }
 
-    const { productId, quantity, unitPrice, discount, customerId, paymentMethod } = validation.data
+    const { productId, quantity, discount, customerId, paymentMethod } = validation.data
 
     const product = await prisma.product.findUnique({
       where: { id: productId },
     })
 
-    if (!product) {
+    if (!product || !product.isActive) {
       return NextResponse.json(
         { error: 'Product not found' },
         { status: 404 }
@@ -144,12 +154,14 @@ export async function POST(request: Request) {
 
     if (product.quantity < quantity) {
       return NextResponse.json(
-        { error: 'Insufficient stock' },
+        { error: `Insufficient stock. Available: ${product.quantity}` },
         { status: 400 }
       )
     }
 
-    const totalAmount = (unitPrice * quantity) - (discount || 0)
+    const unitPrice = Number(product.sellingPrice)
+    const safeDiscount = Math.min(discount || 0, unitPrice * quantity)
+    const totalAmount = Math.max(0, (unitPrice * quantity) - safeDiscount)
 
     const [sale] = await prisma.$transaction([
       prisma.sale.create({
@@ -157,7 +169,7 @@ export async function POST(request: Request) {
           productId,
           quantity,
           unitPrice,
-          discount: discount || 0,
+          discount: safeDiscount,
           totalAmount,
           customerId: customerId || null,
           paymentMethod,
@@ -185,7 +197,8 @@ export async function POST(request: Request) {
       { productId, quantity, totalAmount }
     )
 
-    return NextResponse.json(sale, { status: 201 })
+    const response = NextResponse.json(sale, { status: 201 })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to create sale:', error)
     return NextResponse.json(

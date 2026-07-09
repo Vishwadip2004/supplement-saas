@@ -97,7 +97,7 @@ export default function SalesPage() {
 
   const selectedProduct = products.find((p) => p.id === productId)
   const total = selectedProduct
-    ? selectedProduct.sellingPrice * quantity - discount
+    ? Number(selectedProduct.sellingPrice) * quantity - discount
     : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -201,7 +201,7 @@ export default function SalesPage() {
                 <option value="">Select a product</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} - ${p.sellingPrice.toFixed(2)} (Stock: {p.quantity})
+                    {p.name} - ₹{Number(p.sellingPrice).toFixed(2)} (Stock: {p.quantity})
                   </option>
                 ))}
               </select>
@@ -290,7 +290,7 @@ export default function SalesPage() {
                   Total
                 </label>
                 <div className="mt-1 px-3 py-3 bg-gray-50 border border-gray-300 rounded-lg text-lg font-bold text-gray-900">
-                  ${total.toFixed(2)}
+                  ₹{total.toFixed(2)}
                 </div>
               </div>
             </div>
@@ -387,7 +387,7 @@ export default function SalesPage() {
                       {sale.quantity}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ${Number(sale.totalAmount).toFixed(2)}
+                      ₹{Number(sale.totalAmount).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {sale.paymentMethod}

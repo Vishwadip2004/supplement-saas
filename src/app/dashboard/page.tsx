@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 
 interface DashboardData {
   totalProducts: number
@@ -19,6 +20,9 @@ interface DashboardData {
 }
 
 export default function DashboardPage() {
+  const { data: session } = useSession()
+  const userRole = session?.user?.role || 'STAFF'
+  const canManage = ['ADMIN', 'MANAGER'].includes(userRole)
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -106,7 +110,7 @@ export default function DashboardPage() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500">Today&apos;s Sales</p>
-              <p className="text-2xl font-bold text-gray-900">${stats.todaySales.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-900">₹{Number(stats.todaySales).toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -115,12 +119,14 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Link href="/dashboard/products" className="flex flex-col items-center p-4 border-2 border-dashed border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors">
-            <svg className="w-8 h-8 text-indigo-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span className="text-sm font-medium text-gray-700">Add Product</span>
-          </Link>
+          {canManage && (
+            <Link href="/dashboard/products" className="flex flex-col items-center p-4 border-2 border-dashed border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors">
+              <svg className="w-8 h-8 text-indigo-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span className="text-sm font-medium text-gray-700">Add Product</span>
+            </Link>
+          )}
 
           <Link href="/dashboard/sales" className="flex flex-col items-center p-4 border-2 border-dashed border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors">
             <svg className="w-8 h-8 text-green-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,12 +135,14 @@ export default function DashboardPage() {
             <span className="text-sm font-medium text-gray-700">New Sale</span>
           </Link>
 
-          <Link href="/dashboard/reports" className="flex flex-col items-center p-4 border-2 border-dashed border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors">
-            <svg className="w-8 h-8 text-purple-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <span className="text-sm font-medium text-gray-700">Reports</span>
-          </Link>
+          {canManage && (
+            <Link href="/dashboard/reports" className="flex flex-col items-center p-4 border-2 border-dashed border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-colors">
+              <svg className="w-8 h-8 text-purple-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span className="text-sm font-medium text-gray-700">Reports</span>
+            </Link>
+          )}
 
           <Link href="/dashboard/customers" className="flex flex-col items-center p-4 border-2 border-dashed border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 transition-colors">
             <svg className="w-8 h-8 text-orange-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,7 +168,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-900">Sale processed</p>
-                  <p className="text-xs text-gray-500">{sale.product.name} x{sale.quantity} - ${sale.totalAmount}</p>
+                  <p className="text-xs text-gray-500">{sale.product.name} x{sale.quantity} - ₹{sale.totalAmount}</p>
                 </div>
                 <span className="ml-auto text-xs text-gray-500">{new Date(sale.createdAt).toLocaleDateString()}</span>
               </div>

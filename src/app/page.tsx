@@ -102,7 +102,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <div className="bg-white rounded-xl shadow-lg p-8">
               <h4 className="text-xl font-semibold text-gray-900 mb-2">Starter</h4>
-              <div className="text-4xl font-bold text-indigo-600 mb-4">$29<span className="text-lg text-gray-500">/mo</span></div>
+              <div className="text-4xl font-bold text-indigo-600 mb-4">₹29<span className="text-lg text-gray-500">/mo</span></div>
               <ul className="space-y-3 text-gray-600">
                 <li className="flex items-center">
                   <svg className="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -130,7 +130,7 @@ export default function Home() {
                 Most Popular
               </div>
               <h4 className="text-xl font-semibold mb-2">Growth</h4>
-              <div className="text-4xl font-bold mb-4">$79<span className="text-lg text-indigo-200">/mo</span></div>
+              <div className="text-4xl font-bold mb-4">₹79<span className="text-lg text-indigo-200">/mo</span></div>
               <ul className="space-y-3">
                 <li className="flex items-center">
                   <svg className="w-5 h-5 text-green-300 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -155,7 +155,7 @@ export default function Home() {
 
             <div className="bg-white rounded-xl shadow-lg p-8">
               <h4 className="text-xl font-semibold text-gray-900 mb-2">Enterprise</h4>
-              <div className="text-4xl font-bold text-indigo-600 mb-4">$199<span className="text-lg text-gray-500">/mo</span></div>
+              <div className="text-4xl font-bold text-indigo-600 mb-4">₹199<span className="text-lg text-gray-500">/mo</span></div>
               <ul className="space-y-3 text-gray-600">
                 <li className="flex items-center">
                   <svg className="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">

@@ -4,10 +4,15 @@ import { securityConfig } from './config'
 export class Encryption {
   private key: Buffer
   private algorithm = securityConfig.encryption.algorithm
+  private salt: Buffer
   
-  constructor(secretKey?: string) {
-    const key = secretKey || process.env.ENCRYPTION_KEY || 'default-encryption-key-change-in-production'
-    this.key = crypto.scryptSync(key, 'salt', securityConfig.encryption.keyLength)
+  constructor(secretKey?: string, salt?: string) {
+    const key = secretKey || process.env.ENCRYPTION_KEY
+    if (!key) {
+      throw new Error('ENCRYPTION_KEY environment variable is required')
+    }
+    this.salt = Buffer.from(salt || process.env.ENCRYPTION_SALT || crypto.randomBytes(16).toString('hex'), 'hex')
+    this.key = crypto.scryptSync(key, this.salt, securityConfig.encryption.keyLength)
   }
   
   encrypt(text: string): string {

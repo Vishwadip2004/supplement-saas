@@ -4,6 +4,28 @@ import bcrypt from 'bcryptjs'
 import prisma from '@/lib/prisma'
 import { auditLogger } from '@/lib/security/audit'
 
+const loginAttempts = new Map<string, { count: number; lastAttempt: number }>()
+const LOCKOUT_THRESHOLD = 5
+const LOCKOUT_WINDOW = 15 * 60 * 1000 // 15 minutes
+
+function checkLoginRateLimit(identifier: string): boolean {
+  const now = Date.now()
+  const record = loginAttempts.get(identifier)
+  
+  if (!record || now - record.lastAttempt > LOCKOUT_WINDOW) {
+    loginAttempts.set(identifier, { count: 1, lastAttempt: now })
+    return true
+  }
+  
+  if (record.count >= LOCKOUT_THRESHOLD) {
+    return false
+  }
+  
+  record.count++
+  record.lastAttempt = now
+  return true
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -16,6 +38,19 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) {
           throw new Error('Invalid credentials')
         }
+
+        const ip = req?.headers?.['x-forwarded-for'] as string || 'unknown'
+        const lockoutKey = `${credentials.email}:${ip}`
+
+        if (!checkLoginRateLimit(lockoutKey)) {
+          await auditLogger.logAuth(
+            credentials.email,
+            'LOGIN_LOCKED_OUT',
+            'failure',
+            ip
+          )
+          throw new Error('Account temporarily locked due to too many failed attempts')
+        }
         
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
@@ -26,7 +61,7 @@ export const authOptions: NextAuthOptions = {
             credentials.email,
             'LOGIN_FAILED',
             'failure',
-            req?.headers?.['x-forwarded-for'] as string
+            ip
           )
           throw new Error('Invalid credentials')
         }
@@ -38,12 +73,13 @@ export const authOptions: NextAuthOptions = {
             user.id,
             'LOGIN_FAILED',
             'failure',
-            req?.headers?.['x-forwarded-for'] as string
+            ip
           )
           throw new Error('Invalid credentials')
         }
+
+        loginAttempts.delete(lockoutKey)
         
-        // Update last login
         await prisma.user.update({
           where: { id: user.id },
           data: { lastLogin: new Date() },
@@ -53,7 +89,7 @@ export const authOptions: NextAuthOptions = {
           user.id,
           'LOGIN_SUCCESS',
           'success',
-          req?.headers?.['x-forwarded-for'] as string
+          ip
         )
         
         return {
@@ -67,7 +103,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt' as const,
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 24 * 60 * 60, // 24 hours
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -89,6 +125,17 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: '/auth/login',
     error: '/auth/error',
+  },
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === 'production' ? '__Secure-next-auth.session-token' : 'next-auth.session-token',
+      options: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+      },
+    },
   },
   secret: process.env.NEXTAUTH_SECRET,
 }

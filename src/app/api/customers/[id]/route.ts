@@ -54,7 +54,7 @@ export async function GET(
       where: { id },
     })
     
-    if (!customer) {
+    if (!customer || !customer.isActive) {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }
@@ -102,7 +102,15 @@ export async function PUT(
   
   try {
     const { id } = await params
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
     const validation = validateInput(customerSchema, body)
     
     if (!validation.success) {
@@ -191,8 +199,16 @@ export async function DELETE(
       )
     }
     
-    await prisma.customer.delete({
+    if (!existing.isActive) {
+      return NextResponse.json(
+        { error: 'Customer is already deactivated' },
+        { status: 400 }
+      )
+    }
+    
+    await prisma.customer.update({
       where: { id },
+      data: { isActive: false },
     })
     
     await auditLogger.logDataChange(

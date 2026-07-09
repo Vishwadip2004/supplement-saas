@@ -46,7 +46,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const { email, name, password, role } = validation.data
+    const { email, name, password } = validation.data
 
     const existingUser = await prisma.user.findUnique({
       where: { email },
@@ -54,8 +54,8 @@ export async function POST(request: Request) {
 
     if (existingUser) {
       return NextResponse.json(
-        { error: 'Email already registered' },
-        { status: 409 }
+        { message: 'If this email is not already registered, you will receive a confirmation shortly.' },
+        { status: 201 }
       )
     }
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
         email,
         name,
         password: hashedPassword,
-        role: role || 'STAFF',
+        role: 'STAFF',
       },
     })
 

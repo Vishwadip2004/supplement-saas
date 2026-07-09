@@ -32,10 +32,9 @@ export function proxy(request: NextRequest) {
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';"
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';"
   )
-  response.headers.set('X-RateLimit-Limit', '100')
-  response.headers.set('X-RateLimit-Remaining', '99')
+  response.headers.set('X-Powered-By', '')
   
   return response
 }

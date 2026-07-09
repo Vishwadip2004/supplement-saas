@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { productSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
+import { setCorsHeaders } from '@/lib/cors'
 
 // Rate limiting
 const rateLimit = new Map<string, { count: number; lastReset: number }>()
@@ -49,8 +50,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
+    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
     const where = {
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
       prisma.product.count({ where }),
     ])
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       data: products,
       pagination: {
         page,
@@ -84,6 +85,7 @@ export async function GET(request: Request) {
         pages: Math.ceil(total / limit),
       },
     })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch products:', error)
     return NextResponse.json(
@@ -121,7 +123,15 @@ export async function POST(request: Request) {
   }
   
   try {
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
     const validation = validateInput(productSchema, body)
     
     if (!validation.success) {
@@ -143,7 +153,8 @@ export async function POST(request: Request) {
       { name: product.name, sku: product.sku }
     )
     
-    return NextResponse.json(product, { status: 201 })
+    const response = NextResponse.json(product, { status: 201 })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to create product:', error)
     return NextResponse.json(

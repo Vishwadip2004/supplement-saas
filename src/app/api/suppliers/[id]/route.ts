@@ -113,7 +113,15 @@ export async function PUT(request: Request, { params }: RouteContext) {
       )
     }
 
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
     const validation = validateInput(supplierSchema, body)
 
     if (!validation.success) {

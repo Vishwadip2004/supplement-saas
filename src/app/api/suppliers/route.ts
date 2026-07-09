@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { supplierSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
+import { setCorsHeaders } from '@/lib/cors'
 
 const rateLimit = new Map<string, { count: number; lastReset: number }>()
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000
@@ -48,8 +49,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
+    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
     const where = {
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
       prisma.supplier.count({ where }),
     ])
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       data: suppliers,
       pagination: {
         page,
@@ -82,6 +83,7 @@ export async function GET(request: Request) {
         pages: Math.ceil(total / limit),
       },
     })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch suppliers:', error)
     return NextResponse.json(
@@ -118,7 +120,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
     const validation = validateInput(supplierSchema, body)
 
     if (!validation.success) {
@@ -140,7 +150,8 @@ export async function POST(request: Request) {
       { name: supplier.name }
     )
 
-    return NextResponse.json(supplier, { status: 201 })
+    const response = NextResponse.json(supplier, { status: 201 })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to create supplier:', error)
     return NextResponse.json(

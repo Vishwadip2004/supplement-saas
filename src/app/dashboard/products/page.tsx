@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 
 interface Product {
   id: string
@@ -52,6 +53,8 @@ const defaultFormData: ProductFormData = {
 }
 
 export default function ProductsPage() {
+  const { data: session } = useSession()
+  const canManage = ['ADMIN', 'MANAGER'].includes(session?.user?.role || '')
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -195,10 +198,10 @@ export default function ProductsPage() {
       description: product.description || '',
       category: product.category,
       brand: product.brand,
-      purchasePrice: product.purchasePrice,
-      sellingPrice: product.sellingPrice,
-      quantity: product.quantity,
-      minStock: product.minStock,
+      purchasePrice: Number(product.purchasePrice),
+      sellingPrice: Number(product.sellingPrice),
+      quantity: Number(product.quantity),
+      minStock: Number(product.minStock),
       expiryDate: product.expiryDate
         ? new Date(product.expiryDate).toISOString().split('T')[0]
         : '',
@@ -264,10 +267,10 @@ export default function ProductsPage() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD',
-    }).format(amount)
+      currency: 'INR',
+    }).format(Number(amount))
   }
 
   const formatDate = (date: string | null) => {
@@ -286,25 +289,27 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <p className="text-sm text-gray-500">Manage your product inventory</p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-        >
-          <svg
-            className="w-5 h-5 mr-2"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        {canManage && (
+          <button
+            onClick={openAddModal}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-            />
-          </svg>
-          Add Product
-        </button>
+            <svg
+              className="w-5 h-5 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
+            </svg>
+            Add Product
+          </button>
+        )}
       </div>
 
       {error && (
@@ -387,25 +392,27 @@ export default function ProductsPage() {
             Get started by adding a new product.
           </p>
           <div className="mt-6">
-            <button
-              onClick={openAddModal}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-            >
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {canManage && (
+              <button
+                onClick={openAddModal}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                />
-              </svg>
-              Add Product
-            </button>
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  />
+                </svg>
+                Add Product
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -488,18 +495,22 @@ export default function ProductsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => handleEdit(product)}
-                        className="text-indigo-600 hover:text-indigo-900 mr-4 transition-colors"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(product)}
-                        className="text-red-600 hover:text-red-900 transition-colors"
-                      >
-                        Delete
-                      </button>
+                      {canManage && (
+                        <>
+                          <button
+                            onClick={() => handleEdit(product)}
+                            className="text-indigo-600 hover:text-indigo-900 mr-4 transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(product)}
+                            className="text-red-600 hover:text-red-900 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

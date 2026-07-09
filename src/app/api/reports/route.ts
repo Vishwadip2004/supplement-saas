@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
+import { setCorsHeaders } from '@/lib/cors'
 
 const rateLimit = new Map<string, { count: number; lastReset: number }>()
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000
@@ -61,11 +62,11 @@ export async function GET(request: Request) {
       prisma.product.count({ where: { isActive: true, expiryDate: { gte: new Date(), lte: thirtyDaysFromNow } } }),
       prisma.sale.aggregate({ _sum: { totalAmount: true } }),
       prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: todayStart } } }),
-      prisma.customer.count(),
+      prisma.customer.count({ where: { isActive: true } }),
       prisma.sale.findMany({ take: 10, orderBy: { createdAt: 'desc' }, include: { product: true } }),
     ])
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       totalProducts,
       lowStock: lowStockCount,
       expiringSoon,
@@ -74,6 +75,7 @@ export async function GET(request: Request) {
       totalCustomers,
       recentSales,
     })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch reports:', error)
     return NextResponse.json(
