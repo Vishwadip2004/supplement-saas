@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  OTHER
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+  WARNING
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String
+  password      String    // Hashed password
+  role          Role      @default(STAFF)
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  sales         Sale[]
+  auditLogs     AuditLog[]
+  sessions      Session[]
+  
+  @@map("users")
+}
+
+model Session {
+  id            String    @id @default(uuid())
+  userId        String
+  token         String    @unique
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+  
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model Product {
+  id            String    @id @default(uuid())
+  name          String
+  sku           String    @unique
+  barcode       String?
+  description   String?
+  category      String
+  brand         String
+  purchasePrice Decimal   @db.Decimal(10, 2)
+  sellingPrice  Decimal   @db.Decimal(10, 2)
+  quantity      Int       @default(0)
+  minStock      Int       @default(10)
+  expiryDate    DateTime?
+  batchNumber   String?
+  storageLocation String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  sales         Sale[]
+  stockMovements StockMovement[]
+  
+  @@map("products")
+}
+
+model Customer {
+  id            String    @id @default(uuid())
+  name          String
+  email         String?
+  phone         String?
+  address       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  sales         Sale[]
+  
+  @@map("customers")
+}
+
+model Supplier {
+  id            String    @id @default(uuid())
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  notes         String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  purchaseOrders PurchaseOrder[]
+  
+  @@map("suppliers")
+}
+
+model Sale {
+  id            String    @id @default(uuid())
+  productId     String
+  customerId    String?
+  quantity      Int
+  unitPrice     Decimal   @db.Decimal(10, 2)
+  discount      Decimal   @default(0) @db.Decimal(10, 2)
+  totalAmount   Decimal   @db.Decimal(10, 2)
+  paymentMethod PaymentMethod
+  notes         String?
+  createdAt     DateTime  @default(now())
+  
+  // Relations
+  product       Product   @relation(fields: [productId], references: [id])
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  
+  @@map("sales")
+}
+
+model StockMovement {
+  id            String    @id @default(uuid())
+  productId     String
+  quantity      Int
+  type          String    // IN, OUT, ADJUSTMENT
+  reference     String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  
+  // Relations
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  @@map("stock_movements")
+}
+
+model PurchaseOrder {
+  id            String    @id @default(uuid())
+  supplierId    String
+  status        String    @default("PENDING") // PENDING, APPROVED, RECEIVED, CANCELLED
+  totalAmount   Decimal   @db.Decimal(10, 2)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  supplier      Supplier  @relation(fields: [supplierId], references: [id])
+  items         PurchaseOrderItem[]
+  
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id            String    @id @default(uuid())
+  purchaseOrderId String
+  productId     String
+  quantity      Int
+  unitPrice     Decimal   @db.Decimal(10, 2)
+  
+  // Relations
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [productId], references: [id])
+  
+  @@map("purchase_order_items")
+}
+
+model AuditLog {
+  id            String    @id @default(uuid())
+  userId        String?
+  action        String
+  resource      String
+  resourceId    String?
+  details       String?   // JSON string
+  ipAddress     String?
+  userAgent     String?
+  status        AuditStatus
+  timestamp     DateTime  @default(now())
+  
+  // Relations
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([resource])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  id            String    @id @default(uuid())
+  key           String    @unique
+  value         String
+  description   String?
+  updatedAt     DateTime  @updatedAt
+  
+  @@map("system_config")
+}
