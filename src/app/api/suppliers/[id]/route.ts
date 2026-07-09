@@ -6,6 +6,7 @@ import { supplierSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(
   request: Request,
@@ -29,10 +30,12 @@ export async function GET(
     )
   }
 
+  const tenantId = extractTenantId(session)
+
   try {
     const { id } = await params
-    const supplier = await prisma.supplier.findUnique({
-      where: { id },
+    const supplier = await prisma.supplier.findFirst({
+      where: { id, tenantId },
     })
 
     if (!supplier || !supplier.isActive) {
@@ -82,10 +85,12 @@ export async function PUT(
     )
   }
 
+  const tenantId = extractTenantId(session)
+
   try {
     const { id } = await params
-    const existing = await prisma.supplier.findUnique({
-      where: { id },
+    const existing = await prisma.supplier.findFirst({
+      where: { id, tenantId },
     })
 
     if (!existing || !existing.isActive) {
@@ -114,11 +119,12 @@ export async function PUT(
     }
 
     const supplier = await prisma.supplier.update({
-      where: { id },
+      where: { id, tenantId },
       data: validation.data,
     })
 
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'supplier',
       supplier.id,
@@ -166,10 +172,12 @@ export async function DELETE(
     )
   }
 
+  const tenantId = extractTenantId(session)
+
   try {
     const { id } = await params
-    const existing = await prisma.supplier.findUnique({
-      where: { id },
+    const existing = await prisma.supplier.findFirst({
+      where: { id, tenantId },
     })
 
     if (!existing || !existing.isActive) {
@@ -180,11 +188,12 @@ export async function DELETE(
     }
 
     const supplier = await prisma.supplier.update({
-      where: { id },
+      where: { id, tenantId },
       data: { isActive: false },
     })
 
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'supplier',
       supplier.id,

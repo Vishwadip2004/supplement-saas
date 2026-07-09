@@ -4,6 +4,12 @@ import prisma from '@/lib/prisma'
 import { userSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { z } from 'zod'
+
+const registerSchema = userSchema.extend({
+  shopName: z.string().min(2).max(100),
+  shopSlug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+})
 
 export async function POST(request: Request) {
   const ip = getClientIp(request)
@@ -17,7 +23,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const validation = validateInput(userSchema, body)
+    const validation = validateInput(registerSchema, body)
 
     if (!validation.success) {
       return NextResponse.json(
@@ -26,12 +32,21 @@ export async function POST(request: Request) {
       )
     }
 
-    const { email, name, password } = validation.data
+    const { email, name, password, shopName, shopSlug } = validation.data
 
-    const existingUser = await prisma.user.findUnique({
+    const existingTenant = await prisma.tenant.findUnique({
+      where: { slug: shopSlug },
+    })
+    if (existingTenant) {
+      return NextResponse.json(
+        { error: 'Shop URL already taken' },
+        { status: 409 }
+      )
+    }
+
+    const existingUser = await prisma.user.findFirst({
       where: { email },
     })
-
     if (existingUser) {
       return NextResponse.json(
         { error: 'Registration failed' },
@@ -41,24 +56,34 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 12)
 
-    const user = await prisma.user.create({
-      data: {
-        email,
-        name,
-        password: hashedPassword,
-        role: 'STAFF',
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: { name: shopName, slug: shopSlug },
+      })
+
+      const user = await tx.user.create({
+        data: {
+          email,
+          name,
+          password: hashedPassword,
+          role: 'ADMIN',
+          tenantId: tenant.id,
+        },
+      })
+
+      return { tenant, user }
     })
 
     await auditLogger.logAuth(
-      user.id,
+      result.tenant.id,
+      result.user.id,
       'REGISTER_SUCCESS',
       'success',
       ip
     )
 
     return NextResponse.json(
-      { message: 'Account created successfully', userId: user.id },
+      { message: 'Account created successfully', userId: result.user.id },
       { status: 201 }
     )
   } catch (error) {

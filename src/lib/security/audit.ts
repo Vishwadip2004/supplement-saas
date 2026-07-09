@@ -1,7 +1,8 @@
-import { prisma } from '@/lib/prisma'
+import prisma from '@/lib/prisma'
 import { AuditStatus } from '@prisma/client'
 
 export interface AuditLog {
+  tenantId: string
   userId?: string
   action: string
   resource: string
@@ -29,6 +30,7 @@ export class AuditLogger {
     try {
       await prisma.auditLog.create({
         data: {
+          tenantId: data.tenantId,
           userId: data.userId,
           action: data.action,
           resource: data.resource,
@@ -51,8 +53,9 @@ export class AuditLogger {
     }
   }
   
-  static async logAuth(userId: string, action: string, status: 'success' | 'failure', ipAddress?: string): Promise<void> {
+  static async logAuth(tenantId: string, userId: string, action: string, status: 'success' | 'failure', ipAddress?: string): Promise<void> {
     await this.log({
+      tenantId,
       userId,
       action,
       resource: 'auth',
@@ -61,8 +64,9 @@ export class AuditLogger {
     })
   }
   
-  static async logDataChange(userId: string, resource: string, resourceId: string, action: string, details?: Record<string, unknown>): Promise<void> {
+  static async logDataChange(tenantId: string, userId: string, resource: string, resourceId: string, action: string, details?: Record<string, unknown>): Promise<void> {
     await this.log({
+      tenantId,
       userId,
       action,
       resource,

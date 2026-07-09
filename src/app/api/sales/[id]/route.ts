@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(
   request: Request,
@@ -33,11 +34,13 @@ export async function GET(
     )
   }
 
+  const tenantId = extractTenantId(session)
+
   try {
     const { id } = await params
 
-    const sale = await prisma.sale.findUnique({
-      where: { id },
+    const sale = await prisma.sale.findFirst({
+      where: { id, tenantId },
       include: {
         product: true,
         customer: true,

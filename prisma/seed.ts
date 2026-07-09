@@ -8,39 +8,54 @@ const prisma = new PrismaClient({ adapter })
 async function main() {
   console.log('Seeding database...')
 
+  const tenant = await prisma.tenant.upsert({
+    where: { slug: 'supplement-shop' },
+    update: {},
+    create: {
+      name: 'Supplement Shop',
+      slug: 'supplement-shop',
+      plan: 'pro',
+    },
+  })
+
+  console.log('Created tenant:', tenant.name)
+
   const adminPassword = await bcrypt.hash('Admin123!@#$', 12)
   const staffPassword = await bcrypt.hash('Staff123!@#$', 12)
 
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@supplementshop.com' },
+    where: { tenantId_email: { tenantId: tenant.id, email: 'admin@supplementshop.com' } },
     update: {},
     create: {
       email: 'admin@supplementshop.com',
       name: 'Admin User',
       password: adminPassword,
       role: Role.ADMIN,
+      tenantId: tenant.id,
     },
   })
 
   const manager = await prisma.user.upsert({
-    where: { email: 'manager@supplementshop.com' },
+    where: { tenantId_email: { tenantId: tenant.id, email: 'manager@supplementshop.com' } },
     update: {},
     create: {
       email: 'manager@supplementshop.com',
       name: 'Manager User',
       password: staffPassword,
       role: Role.MANAGER,
+      tenantId: tenant.id,
     },
   })
 
   const staff = await prisma.user.upsert({
-    where: { email: 'staff@supplementshop.com' },
+    where: { tenantId_email: { tenantId: tenant.id, email: 'staff@supplementshop.com' } },
     update: {},
     create: {
       email: 'staff@supplementshop.com',
       name: 'Staff User',
       password: staffPassword,
       role: Role.STAFF,
+      tenantId: tenant.id,
     },
   })
 
@@ -62,12 +77,13 @@ async function main() {
   const createdProducts = []
   for (const product of products) {
     const p = await prisma.product.upsert({
-      where: { sku: product.sku },
+      where: { tenantId_sku: { tenantId: tenant.id, sku: product.sku } },
       update: {},
       create: {
         ...product,
         storageLocation: 'Warehouse A',
         batchNumber: `BATCH-${product.sku}`,
+        tenantId: tenant.id,
       },
     })
     createdProducts.push(p)
@@ -85,7 +101,9 @@ async function main() {
 
   const createdCustomers = []
   for (const customer of customers) {
-    const c = await prisma.customer.create({ data: customer })
+    const c = await prisma.customer.create({
+      data: { ...customer, tenantId: tenant.id },
+    })
     createdCustomers.push(c)
   }
 
@@ -99,7 +117,9 @@ async function main() {
 
   const createdSuppliers = []
   for (const supplier of suppliers) {
-    const s = await prisma.supplier.create({ data: supplier })
+    const s = await prisma.supplier.create({
+      data: { ...supplier, tenantId: tenant.id },
+    })
     createdSuppliers.push(s)
   }
 
@@ -122,6 +142,7 @@ async function main() {
       discount,
       totalAmount,
       paymentMethod: paymentMethods[i % paymentMethods.length],
+      tenantId: tenant.id,
     })
   }
 

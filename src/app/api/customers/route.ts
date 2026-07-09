@@ -6,6 +6,7 @@ import { customerSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(request: Request) {
   const ip = getClientIp(request)
@@ -26,6 +27,8 @@ export async function GET(request: Request) {
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
@@ -34,6 +37,7 @@ export async function GET(request: Request) {
     const skip = (page - 1) * limit
 
     const where = {
+      tenantId,
       isActive: true,
       ...(search && {
         OR: [
@@ -96,6 +100,8 @@ export async function POST(request: Request) {
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     let body: unknown
     try {
@@ -116,10 +122,14 @@ export async function POST(request: Request) {
     }
     
     const customer = await prisma.customer.create({
-      data: validation.data,
+      data: {
+        ...validation.data,
+        tenantId,
+      },
     })
     
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'customer',
       customer.id,

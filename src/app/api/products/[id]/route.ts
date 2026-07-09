@@ -6,6 +6,7 @@ import { productSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(
   request: Request,
@@ -29,10 +30,12 @@ export async function GET(
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     const { id } = await params
-    const product = await prisma.product.findUnique({
-      where: { id },
+    const product = await prisma.product.findFirst({
+      where: { id, tenantId },
     })
     
     if (!product || !product.isActive) {
@@ -82,6 +85,8 @@ export async function PUT(
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     const { id } = await params
     let body: unknown
@@ -102,8 +107,8 @@ export async function PUT(
       )
     }
     
-    const existingProduct = await prisma.product.findUnique({
-      where: { id },
+    const existingProduct = await prisma.product.findFirst({
+      where: { id, tenantId },
     })
     
     if (!existingProduct || !existingProduct.isActive) {
@@ -114,11 +119,12 @@ export async function PUT(
     }
     
     const product = await prisma.product.update({
-      where: { id },
+      where: { id, tenantId },
       data: validation.data,
     })
     
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'product',
       product.id,
@@ -166,10 +172,12 @@ export async function DELETE(
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     const { id } = await params
-    const existingProduct = await prisma.product.findUnique({
-      where: { id },
+    const existingProduct = await prisma.product.findFirst({
+      where: { id, tenantId },
     })
     
     if (!existingProduct || !existingProduct.isActive) {
@@ -180,11 +188,12 @@ export async function DELETE(
     }
     
     const product = await prisma.product.update({
-      where: { id },
+      where: { id, tenantId },
       data: { isActive: false },
     })
     
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'product',
       product.id,

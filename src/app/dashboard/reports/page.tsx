@@ -1,26 +1,10 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-
-interface Stats {
-  totalProducts: number
-  lowStock: number
-  expiringSoon: number
-  totalSales: number
-  todaySales: number
-  totalCustomers: number
-  recentSales: Array<{
-    id: string
-    quantity: number
-    totalAmount: number
-    paymentMethod: string
-    createdAt: string
-    product: { name: string }
-  }>
-}
+import type { DashboardData } from '@/types'
 
 export default function ReportsPage() {
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [stats, setStats] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)

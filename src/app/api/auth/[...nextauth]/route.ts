@@ -25,22 +25,20 @@ export const authOptions: NextAuthOptions = {
             ? forwarded.split(',')[0].trim()
             : 'unknown'
 
+        const user = await prisma.user.findFirst({
+          where: { email: credentials.email },
+        })
+
         if (!checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000)) {
-          await auditLogger.logAuth(
-            credentials.email,
-            'LOGIN_LOCKED_OUT',
-            'failure',
-            ip
-          )
+          if (user) {
+            await auditLogger.logAuth(user.tenantId, user.id, 'LOGIN_LOCKED_OUT', 'failure', ip)
+          }
           throw new Error('Account temporarily locked due to too many failed attempts')
         }
         
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        })
-        
         if (!user || !user.isActive) {
           await auditLogger.logAuth(
+            user?.tenantId || 'unknown',
             credentials.email,
             'LOGIN_FAILED',
             'failure',
@@ -53,6 +51,7 @@ export const authOptions: NextAuthOptions = {
         
         if (!isPasswordValid) {
           await auditLogger.logAuth(
+            user.tenantId,
             user.id,
             'LOGIN_FAILED',
             'failure',
@@ -67,6 +66,7 @@ export const authOptions: NextAuthOptions = {
         })
         
         await auditLogger.logAuth(
+          user.tenantId,
           user.id,
           'LOGIN_SUCCESS',
           'success',
@@ -78,6 +78,7 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           role: user.role,
+          tenantId: user.tenantId,
         }
       },
     }),
@@ -89,9 +90,10 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        const u = user as { role: string; id: string }
+        const u = user as { role: string; id: string; tenantId: string }
         token.role = u.role
         token.id = u.id
+        token.tenantId = u.tenantId
       }
       return token
     },
@@ -99,6 +101,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.role = token.role as string
         session.user.id = token.id as string
+        session.user.tenantId = token.tenantId as string
       }
       return session
     },

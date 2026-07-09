@@ -6,6 +6,7 @@ import { saleSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(request: Request) {
   const ip = getClientIp(request)
@@ -26,6 +27,8 @@ export async function GET(request: Request) {
     )
   }
 
+  const tenantId = extractTenantId(session)
+
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
@@ -33,13 +36,14 @@ export async function GET(request: Request) {
     const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
-    const where = search
-      ? {
-          product: {
-            name: { contains: search, mode: 'insensitive' as const },
-          },
-        }
-      : {}
+    const where = {
+      tenantId,
+      ...(search && {
+        product: {
+          name: { contains: search, mode: 'insensitive' as const },
+        },
+      }),
+    }
 
     const [sales, total] = await Promise.all([
       prisma.sale.findMany({
@@ -100,6 +104,8 @@ export async function POST(request: Request) {
     )
   }
 
+  const tenantId = extractTenantId(session)
+
   try {
     let body: unknown
     try {
@@ -122,8 +128,8 @@ export async function POST(request: Request) {
     const { productId, quantity, discount, customerId, paymentMethod } = validation.data
 
     if (customerId) {
-      const customer = await prisma.customer.findUnique({
-        where: { id: customerId },
+      const customer = await prisma.customer.findFirst({
+        where: { id: customerId, tenantId },
         select: { id: true, isActive: true },
       })
       if (!customer || !customer.isActive) {
@@ -134,8 +140,8 @@ export async function POST(request: Request) {
       }
     }
 
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
+    const product = await prisma.product.findFirst({
+      where: { id: productId, tenantId },
     })
 
     if (!product || !product.isActive) {
@@ -158,7 +164,7 @@ export async function POST(request: Request) {
 
     const [sale] = await prisma.$transaction([
       prisma.product.update({
-        where: { id: productId },
+        where: { id: productId, tenantId },
         data: { quantity: { decrement: quantity } },
       }),
       prisma.sale.create({
@@ -170,6 +176,7 @@ export async function POST(request: Request) {
           totalAmount,
           customerId: customerId || null,
           paymentMethod,
+          tenantId,
         },
       }),
       prisma.stockMovement.create({
@@ -178,11 +185,13 @@ export async function POST(request: Request) {
           quantity: -quantity,
           type: 'OUT',
           reference: `Sale`,
+          tenantId,
         },
       }),
     ])
 
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'sale',
       sale.id,

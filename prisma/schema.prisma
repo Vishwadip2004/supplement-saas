@@ -25,9 +25,44 @@ enum AuditStatus {
   WARNING
 }
 
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+enum PurchaseOrderStatus {
+  PENDING
+  APPROVED
+  RECEIVED
+  CANCELLED
+}
+
+model Tenant {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  plan          String    @default("free")
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users         User[]
+  products      Product[]
+  customers     Customer[]
+  suppliers     Supplier[]
+  sales         Sale[]
+  stockMovements StockMovement[]
+  purchaseOrders PurchaseOrder[]
+  auditLogs     AuditLog[]
+
+  @@map("tenants")
+}
+
 model User {
   id            String    @id @default(uuid())
-  email         String    @unique
+  tenantId      String
+  email         String
   name          String
   password      String    // Hashed password
   role          Role      @default(STAFF)
@@ -35,11 +70,13 @@ model User {
   lastLogin     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   auditLogs     AuditLog[]
   sessions      Session[]
-  
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
   @@map("users")
 }
 
@@ -49,17 +86,17 @@ model Session {
   token         String    @unique
   expiresAt     DateTime
   createdAt     DateTime  @default(now())
-  
-  // Relations
+
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@map("sessions")
 }
 
 model Product {
   id            String    @id @default(uuid())
+  tenantId      String
   name          String
-  sku           String    @unique
+  sku           String
   barcode       String?
   description   String?
   category      String
@@ -74,17 +111,20 @@ model Product {
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   sales         Sale[]
   stockMovements StockMovement[]
   purchaseOrderItems PurchaseOrderItem[]
-  
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
   @@map("products")
 }
 
 model Customer {
   id            String    @id @default(uuid())
+  tenantId      String
   name          String
   email         String?
   phone         String?
@@ -92,15 +132,17 @@ model Customer {
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   sales         Sale[]
-  
+
+  @@index([tenantId])
   @@map("customers")
 }
 
 model Supplier {
   id            String    @id @default(uuid())
+  tenantId      String
   name          String
   contactPerson String?
   email         String?
@@ -110,15 +152,17 @@ model Supplier {
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchaseOrders PurchaseOrder[]
-  
+
+  @@index([tenantId])
   @@map("suppliers")
 }
 
 model Sale {
   id            String    @id @default(uuid())
+  tenantId      String
   productId     String
   customerId    String?
   quantity      Int
@@ -128,42 +172,47 @@ model Sale {
   paymentMethod PaymentMethod
   notes         String?
   createdAt     DateTime  @default(now())
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product       Product   @relation(fields: [productId], references: [id])
   customer      Customer? @relation(fields: [customerId], references: [id])
-  
+
+  @@index([tenantId])
   @@map("sales")
 }
 
 model StockMovement {
   id            String    @id @default(uuid())
+  tenantId      String
   productId     String
   quantity      Int
-  type          String    // IN, OUT, ADJUSTMENT
+  type          StockMovementType
   reference     String?
   notes         String?
   createdAt     DateTime  @default(now())
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product       Product   @relation(fields: [productId], references: [id])
-  
+
+  @@index([tenantId])
   @@map("stock_movements")
 }
 
 model PurchaseOrder {
   id            String    @id @default(uuid())
+  tenantId      String
   supplierId    String
-  status        String    @default("PENDING") // PENDING, APPROVED, RECEIVED, CANCELLED
+  status        PurchaseOrderStatus @default(PENDING)
   totalAmount   Decimal   @db.Decimal(10, 2)
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   supplier      Supplier  @relation(fields: [supplierId], references: [id])
   items         PurchaseOrderItem[]
-  
+
+  @@index([tenantId])
   @@map("purchase_orders")
 }
 
@@ -173,16 +222,16 @@ model PurchaseOrderItem {
   productId     String
   quantity      Int
   unitPrice     Decimal   @db.Decimal(10, 2)
-  
-  // Relations
+
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   product       Product   @relation(fields: [productId], references: [id])
-  
+
   @@map("purchase_order_items")
 }
 
 model AuditLog {
   id            String    @id @default(uuid())
+  tenantId      String
   userId        String?
   action        String
   resource      String
@@ -192,10 +241,11 @@ model AuditLog {
   userAgent     String?
   status        AuditStatus
   timestamp     DateTime  @default(now())
-  
-  // Relations
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
+
+  @@index([tenantId])
   @@index([userId])
   @@index([resource])
   @@index([timestamp])
@@ -208,6 +258,6 @@ model SystemConfig {
   value         String
   description   String?
   updatedAt     DateTime  @updatedAt
-  
+
   @@map("system_config")
 }

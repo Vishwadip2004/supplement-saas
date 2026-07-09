@@ -1,33 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-
-interface Product {
-  id: string
-  name: string
-  sellingPrice: number
-  quantity: number
-}
-
-interface Customer {
-  id: string
-  name: string
-}
-
-interface Sale {
-  id: string
-  createdAt: string
-  product: { name: string }
-  customer: { name: string } | null
-  quantity: number
-  totalAmount: number
-  paymentMethod: string
-}
+import type { Product, Customer, SaleWithRelations } from '@/types'
 
 export default function SalesPage() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [sales, setSales] = useState<Sale[]>([])
+  const [products, setProducts] = useState<Pick<Product, 'id' | 'name' | 'sellingPrice' | 'quantity'>[]>([])
+  const [customers, setCustomers] = useState<Pick<Customer, 'id' | 'name'>[]>([])
+  const [sales, setSales] = useState<SaleWithRelations[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')

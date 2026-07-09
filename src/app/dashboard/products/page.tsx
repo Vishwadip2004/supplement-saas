@@ -2,23 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-
-interface Product {
-  id: string
-  name: string
-  sku: string
-  barcode: string | null
-  description: string | null
-  category: string
-  brand: string
-  purchasePrice: number
-  sellingPrice: number
-  quantity: number
-  minStock: number
-  expiryDate: string | null
-  batchNumber: string | null
-  storageLocation: string | null
-}
+import type { Product } from '@/types'
+import { formatCurrency, formatDate } from '@/utils'
 
 interface ProductFormData {
   name: string
@@ -266,20 +251,9 @@ export default function ProductsPage() {
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-    }).format(Number(amount))
-  }
-
-  const formatDate = (date: string | null) => {
+  const formatProductDate = (date: Date | string | null | undefined) => {
     if (!date) return '-'
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
+    return formatDate(date)
   }
 
   return (
@@ -491,7 +465,7 @@ export default function ProductsPage() {
                             : 'text-gray-500'
                         }`}
                       >
-                        {formatDate(product.expiryDate)}
+                        {formatProductDate(product.expiryDate)}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

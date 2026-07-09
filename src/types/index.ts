@@ -1,6 +1,7 @@
 // User types
 export interface User {
   id: string
+  tenantId: string
   email: string
   name: string
   role: 'ADMIN' | 'MANAGER' | 'STAFF'
@@ -13,6 +14,7 @@ export interface User {
 // Product types
 export interface Product {
   id: string
+  tenantId: string
   name: string
   sku: string
   barcode?: string
@@ -34,6 +36,7 @@ export interface Product {
 // Customer types
 export interface Customer {
   id: string
+  tenantId: string
   name: string
   email?: string
   phone?: string
@@ -46,6 +49,7 @@ export interface Customer {
 // Supplier types
 export interface Supplier {
   id: string
+  tenantId: string
   name: string
   contactPerson?: string
   email?: string
@@ -60,6 +64,7 @@ export interface Supplier {
 // Sale types
 export interface Sale {
   id: string
+  tenantId: string
   productId: string
   customerId?: string
   quantity: number
@@ -74,6 +79,7 @@ export interface Sale {
 // Stock Movement types
 export interface StockMovement {
   id: string
+  tenantId: string
   productId: string
   quantity: number
   type: 'IN' | 'OUT' | 'ADJUSTMENT'
@@ -85,6 +91,7 @@ export interface StockMovement {
 // Purchase Order types
 export interface PurchaseOrder {
   id: string
+  tenantId: string
   supplierId: string
   status: 'PENDING' | 'APPROVED' | 'RECEIVED' | 'CANCELLED'
   totalAmount: number
@@ -101,12 +108,72 @@ export interface ApiResponse<T> {
   message?: string
 }
 
-// Dashboard Stats
-export interface DashboardStats {
+// Paginated response
+export interface PaginatedResponse<T> {
+  data: T[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    pages: number
+  }
+}
+
+// Dashboard Stats (from /api/reports)
+export interface DashboardData {
   totalProducts: number
   lowStock: number
   expiringSoon: number
+  totalSales: number
   todaySales: number
-  totalRevenue: number
   totalCustomers: number
+  recentSales: DashboardSale[]
+}
+
+// Sale item in dashboard/reports (with product included, serialized as strings)
+export interface DashboardSale {
+  id: string
+  quantity: number
+  totalAmount: number
+  paymentMethod: string
+  createdAt: string
+  product: { name: string }
+}
+
+// Sale with relations (from /api/sales with include)
+export interface SaleWithRelations {
+  id: string
+  tenantId: string
+  productId: string
+  customerId?: string | null
+  quantity: number
+  unitPrice: number
+  discount: number
+  totalAmount: number
+  paymentMethod: string
+  notes?: string | null
+  createdAt: string
+  product: { name: string; sellingPrice: number }
+  customer: { name: string } | null
+}
+
+// NextAuth type augmentation
+declare module 'next-auth' {
+  interface Session {
+    user: {
+      id: string
+      email: string
+      name: string
+      role: string
+      tenantId: string
+    }
+  }
+}
+
+declare module 'next-auth/jwt' {
+  interface JWT {
+    id: string
+    role: string
+    tenantId: string
+  }
 }

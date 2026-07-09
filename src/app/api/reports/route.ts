@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(request: Request) {
   const ip = getClientIp(request)
@@ -31,6 +32,8 @@ export async function GET(request: Request) {
     )
   }
 
+  const tenantId = extractTenantId(session)
+
   try {
     const todayStart = new Date()
     todayStart.setHours(0, 0, 0, 0)
@@ -38,19 +41,21 @@ export async function GET(request: Request) {
     const thirtyDaysFromNow = new Date()
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
 
+    const where = { tenantId, isActive: true }
+
     const lowStockProducts = await prisma.product.findMany({
-      where: { isActive: true },
+      where,
       select: { quantity: true, minStock: true },
     })
     const lowStockCount = lowStockProducts.filter((p) => p.quantity <= p.minStock).length
 
     const [totalProducts, expiringSoon, totalSalesResult, todaySalesResult, totalCustomers, recentSales] = await Promise.all([
-      prisma.product.count({ where: { isActive: true } }),
-      prisma.product.count({ where: { isActive: true, expiryDate: { gte: new Date(), lte: thirtyDaysFromNow } } }),
-      prisma.sale.aggregate({ _sum: { totalAmount: true } }),
-      prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { createdAt: { gte: todayStart } } }),
-      prisma.customer.count({ where: { isActive: true } }),
-      prisma.sale.findMany({ take: 10, orderBy: { createdAt: 'desc' }, include: { product: true } }),
+      prisma.product.count({ where }),
+      prisma.product.count({ where: { ...where, expiryDate: { gte: new Date(), lte: thirtyDaysFromNow } } }),
+      prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { tenantId } }),
+      prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { tenantId, createdAt: { gte: todayStart } } }),
+      prisma.customer.count({ where }),
+      prisma.sale.findMany({ where: { tenantId }, take: 10, orderBy: { createdAt: 'desc' }, include: { product: true } }),
     ])
 
     const response = NextResponse.json({

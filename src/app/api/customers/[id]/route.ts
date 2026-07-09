@@ -6,6 +6,7 @@ import { customerSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(
   request: Request,
@@ -29,10 +30,12 @@ export async function GET(
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     const { id } = await params
-    const customer = await prisma.customer.findUnique({
-      where: { id },
+    const customer = await prisma.customer.findFirst({
+      where: { id, tenantId },
     })
     
     if (!customer || !customer.isActive) {
@@ -82,6 +85,8 @@ export async function PUT(
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     const { id } = await params
     let body: unknown
@@ -102,8 +107,8 @@ export async function PUT(
       )
     }
     
-    const existing = await prisma.customer.findUnique({
-      where: { id },
+    const existing = await prisma.customer.findFirst({
+      where: { id, tenantId },
     })
     
     if (!existing || !existing.isActive) {
@@ -114,11 +119,12 @@ export async function PUT(
     }
     
     const customer = await prisma.customer.update({
-      where: { id },
+      where: { id, tenantId },
       data: validation.data,
     })
     
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'customer',
       customer.id,
@@ -169,10 +175,12 @@ export async function DELETE(
     )
   }
   
+  const tenantId = extractTenantId(session)
+  
   try {
     const { id } = await params
-    const existing = await prisma.customer.findUnique({
-      where: { id },
+    const existing = await prisma.customer.findFirst({
+      where: { id, tenantId },
     })
     
     if (!existing || !existing.isActive) {
@@ -183,11 +191,12 @@ export async function DELETE(
     }
     
     await prisma.customer.update({
-      where: { id },
+      where: { id, tenantId },
       data: { isActive: false },
     })
     
     await auditLogger.logDataChange(
+      tenantId,
       session.user.id,
       'customer',
       id,

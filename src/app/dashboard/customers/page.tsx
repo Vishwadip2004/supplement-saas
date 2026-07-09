@@ -2,15 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-
-interface Customer {
-  id: string
-  name: string
-  email: string
-  phone: string
-  address: string
-  createdAt: string
-}
+import type { Customer } from '@/types'
 
 const emptyForm = { name: '', email: '', phone: '', address: '' }
 
@@ -99,9 +91,9 @@ export default function CustomersPage() {
     setEditingId(customer.id)
     setFormData({
       name: customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      address: customer.address,
+      email: customer.email || '',
+      phone: customer.phone || '',
+      address: customer.address || '',
     })
     setFormErrors({})
     setShowModal(true)

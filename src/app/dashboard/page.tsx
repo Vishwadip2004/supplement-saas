@@ -3,21 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-
-interface DashboardData {
-  totalProducts: number
-  lowStock: number
-  expiringSoon: number
-  todaySales: number
-  recentSales: Array<{
-    id: string
-    quantity: number
-    totalAmount: number
-    paymentMethod: string
-    createdAt: string
-    product: { name: string }
-  }>
-}
+import type { DashboardData } from '@/types'
 
 export default function DashboardPage() {
   const { data: session } = useSession()
