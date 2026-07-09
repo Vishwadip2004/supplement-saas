@@ -5,31 +5,10 @@ import prisma from '@/lib/prisma'
 import { productSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
-
-// Rate limiting
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000 // 15 minutes
-const MAX_REQUESTS = 100
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-  
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-  
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-  
-  userRateLimit.count++
-  return true
-}
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
 export async function GET(request: Request) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -96,7 +75,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -114,7 +93,6 @@ export async function POST(request: Request) {
     )
   }
   
-  // Only ADMIN and MANAGER can create products
   if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
     return NextResponse.json(
       { error: 'Forbidden' },

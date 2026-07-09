@@ -49,10 +49,10 @@ export default function Home() {
               Start Free Trial
             </Link>
             <Link
-              href="/demo"
+              href="/auth/login"
               className="bg-white text-indigo-600 px-8 py-3 rounded-lg text-lg font-medium border-2 border-indigo-600 hover:bg-indigo-50 transition-colors"
             >
-              View Demo
+              Sign In
             </Link>
           </div>
         </div>
@@ -67,7 +67,7 @@ export default function Home() {
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-3">Bank-Level Security</h3>
             <p className="text-gray-600">
-              AES-256 encryption, MFA, audit logs, and SOC 2 compliance. Your data is protected 24/7.
+              AES-256 encryption, audit logs, and SOC 2 compliance. Your data is protected 24/7.
             </p>
           </div>
 
@@ -192,7 +192,7 @@ export default function Home() {
               Secure, fast, and beautiful stock management for supplement shops.
             </p>
             <p className="text-gray-500 text-sm">
-              &copy; 2024 SupplementShop Pro. All rights reserved.
+              &copy; {new Date().getFullYear()} SupplementShop Pro. All rights reserved.
             </p>
           </div>
         </div>

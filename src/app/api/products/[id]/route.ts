@@ -4,33 +4,14 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { productSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
-
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000
-const MAX_REQUESTS = 100
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-  
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-  
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-  
-  userRateLimit.count++
-  return true
-}
+import { setCorsHeaders } from '@/lib/cors'
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -54,14 +35,15 @@ export async function GET(
       where: { id },
     })
     
-    if (!product) {
+    if (!product || !product.isActive) {
       return NextResponse.json(
         { error: 'Product not found' },
         { status: 404 }
       )
     }
     
-    return NextResponse.json(product)
+    const response = NextResponse.json(product)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch product:', error)
     return NextResponse.json(
@@ -75,7 +57,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -124,7 +106,7 @@ export async function PUT(
       where: { id },
     })
     
-    if (!existingProduct) {
+    if (!existingProduct || !existingProduct.isActive) {
       return NextResponse.json(
         { error: 'Product not found' },
         { status: 404 }
@@ -144,7 +126,8 @@ export async function PUT(
       { before: { name: existingProduct.name, sku: existingProduct.sku }, after: { name: product.name, sku: product.sku } }
     )
     
-    return NextResponse.json(product)
+    const response = NextResponse.json(product)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to update product:', error)
     return NextResponse.json(
@@ -158,7 +141,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -189,17 +172,10 @@ export async function DELETE(
       where: { id },
     })
     
-    if (!existingProduct) {
+    if (!existingProduct || !existingProduct.isActive) {
       return NextResponse.json(
         { error: 'Product not found' },
         { status: 404 }
-      )
-    }
-    
-    if (!existingProduct.isActive) {
-      return NextResponse.json(
-        { error: 'Product is already deactivated' },
-        { status: 400 }
       )
     }
     
@@ -216,7 +192,8 @@ export async function DELETE(
       { name: product.name, sku: product.sku }
     )
     
-    return NextResponse.json(product)
+    const response = NextResponse.json(product)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to delete product:', error)
     return NextResponse.json(

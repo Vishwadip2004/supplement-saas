@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 interface Stats {
   totalProducts: number
@@ -23,21 +23,24 @@ export default function ReportsPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
+    abortRef.current = new AbortController()
     async function fetchStats() {
       try {
-        const res = await fetch('/api/reports')
+        const res = await fetch('/api/reports', { signal: abortRef.current?.signal })
         if (!res.ok) throw new Error('Failed to fetch')
         const data = await res.json()
         setStats(data)
-      } catch {
-        setError('Failed to load reports')
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') setError('Failed to load reports')
       } finally {
         setLoading(false)
       }
     }
     fetchStats()
+    return () => abortRef.current?.abort()
   }, [])
 
   if (loading) {

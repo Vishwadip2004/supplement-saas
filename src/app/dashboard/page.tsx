@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 
@@ -26,16 +26,22 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    fetch('/api/reports')
+    abortRef.current = new AbortController()
+    fetch('/api/reports', { signal: abortRef.current.signal })
       .then((res) => {
         if (!res.ok) throw new Error('Failed to fetch')
         return res.json()
       })
       .then(setData)
-      .catch(() => setError('Failed to load dashboard data'))
+      .catch((err) => {
+        if (err.name !== 'AbortError') setError('Failed to load dashboard data')
+      })
       .finally(() => setLoading(false))
+
+    return () => abortRef.current?.abort()
   }, [])
 
   if (loading) {
@@ -168,7 +174,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-900">Sale processed</p>
-                  <p className="text-xs text-gray-500">{sale.product.name} x{sale.quantity} - ₹{sale.totalAmount}</p>
+                  <p className="text-xs text-gray-500">{sale.product.name} x{sale.quantity} - ₹{Number(sale.totalAmount).toFixed(2)}</p>
                 </div>
                 <span className="ml-auto text-xs text-gray-500">{new Date(sale.createdAt).toLocaleDateString()}</span>
               </div>

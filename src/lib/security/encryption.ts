@@ -11,7 +11,11 @@ export class Encryption {
     if (!key) {
       throw new Error('ENCRYPTION_KEY environment variable is required')
     }
-    this.salt = Buffer.from(salt || process.env.ENCRYPTION_SALT || crypto.randomBytes(16).toString('hex'), 'hex')
+    const saltHex = salt || process.env.ENCRYPTION_SALT
+    if (!saltHex) {
+      throw new Error('ENCRYPTION_SALT environment variable is required')
+    }
+    this.salt = Buffer.from(saltHex, 'hex')
     this.key = crypto.scryptSync(key, this.salt, securityConfig.encryption.keyLength)
   }
   
@@ -28,7 +32,11 @@ export class Encryption {
   }
   
   decrypt(encryptedText: string): string {
-    const [ivHex, tagHex, encrypted] = encryptedText.split(':')
+    const parts = encryptedText.split(':')
+    if (parts.length !== 3 || parts.some(p => !p)) {
+      throw new Error('Invalid encrypted text format')
+    }
+    const [ivHex, tagHex, encrypted] = parts
     
     const iv = Buffer.from(ivHex, 'hex')
     const tag = Buffer.from(tagHex, 'hex')
@@ -50,4 +58,17 @@ export class Encryption {
   }
 }
 
-export const encryption = new Encryption()
+let _encryption: Encryption | null = null
+
+export function getEncryption(): Encryption {
+  if (!_encryption) {
+    _encryption = new Encryption()
+  }
+  return _encryption
+}
+
+export const encryption = new Proxy({} as Encryption, {
+  get(_, prop) {
+    return (getEncryption() as unknown as Record<string | symbol, unknown>)[prop]
+  },
+})

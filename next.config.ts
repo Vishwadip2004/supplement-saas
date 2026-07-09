@@ -10,10 +10,6 @@ const securityHeaders = [
     value: 'max-age=63072000; includeSubDomains; preload',
   },
   {
-    key: 'X-XSS-Protection',
-    value: '1; mode=block',
-  },
-  {
     key: 'X-Frame-Options',
     value: 'SAMEORIGIN',
   },
@@ -28,6 +24,10 @@ const securityHeaders = [
   {
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=()',
+  },
+  {
+    key: 'Content-Security-Policy',
+    value: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';",
   },
   {
     key: 'X-Powered-By',

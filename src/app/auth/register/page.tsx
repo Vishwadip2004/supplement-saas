@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -16,6 +16,13 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -31,10 +38,15 @@ export default function RegisterPage() {
     if (!formData.password || formData.password.length < 12) {
       newErrors.password = 'Password must be at least 12 characters'
     } else {
-      if (!/[A-Z]/.test(formData.password)) newErrors.password = 'Password must contain an uppercase letter'
-      if (!/[a-z]/.test(formData.password)) newErrors.password = 'Password must contain a lowercase letter'
-      if (!/[0-9]/.test(formData.password)) newErrors.password = 'Password must contain a number'
-      if (!/[^A-Za-z0-9]/.test(formData.password)) newErrors.password = 'Password must contain a special character'
+      if (!/[A-Z]/.test(formData.password)) {
+        newErrors.password = 'Password must contain an uppercase letter'
+      } else if (!/[a-z]/.test(formData.password)) {
+        newErrors.password = 'Password must contain a lowercase letter'
+      } else if (!/[0-9]/.test(formData.password)) {
+        newErrors.password = 'Password must contain a number'
+      } else if (!/[^A-Za-z0-9]/.test(formData.password)) {
+        newErrors.password = 'Password must contain a special character'
+      }
     }
     
     if (formData.password !== formData.confirmPassword) {
@@ -76,7 +88,7 @@ export default function RegisterPage() {
 
       setSuccess(true)
       
-      setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
         router.push('/auth/login')
       }, 2000)
     } catch (err) {
@@ -90,7 +102,6 @@ export default function RegisterPage() {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
     
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }))
     }
@@ -246,13 +257,13 @@ export default function RegisterPage() {
             />
             <label htmlFor="terms" className="ml-2 block text-sm text-gray-900">
               I agree to the{' '}
-              <a href="#" className="text-indigo-600 hover:text-indigo-500">
+              <span className="text-indigo-600">
                 Terms of Service
-              </a>{' '}
+              </span>{' '}
               and{' '}
-              <a href="#" className="text-indigo-600 hover:text-indigo-500">
+              <span className="text-indigo-600">
                 Privacy Policy
-              </a>
+              </span>
             </label>
           </div>
 

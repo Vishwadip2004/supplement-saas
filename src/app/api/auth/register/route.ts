@@ -3,32 +3,12 @@ import bcrypt from 'bcryptjs'
 import prisma from '@/lib/prisma'
 import { userSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
-
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000
-const MAX_REQUESTS = 10
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-
-  userRateLimit.count++
-  return true
-}
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
 export async function POST(request: Request) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
 
-  if (!checkRateLimit(ip)) {
+  if (!checkRateLimit(ip, 10)) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
@@ -54,8 +34,8 @@ export async function POST(request: Request) {
 
     if (existingUser) {
       return NextResponse.json(
-        { message: 'If this email is not already registered, you will receive a confirmation shortly.' },
-        { status: 201 }
+        { error: 'Registration failed' },
+        { status: 409 }
       )
     }
 

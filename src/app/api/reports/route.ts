@@ -3,30 +3,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { setCorsHeaders } from '@/lib/cors'
-
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000
-const MAX_REQUESTS = 100
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-
-  userRateLimit.count++
-  return true
-}
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
 export async function GET(request: Request) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
 
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -41,6 +21,13 @@ export async function GET(request: Request) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
+    )
+  }
+
+  if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
+    return NextResponse.json(
+      { error: 'Forbidden' },
+      { status: 403 }
     )
   }
 

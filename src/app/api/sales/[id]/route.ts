@@ -2,34 +2,13 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000
-const MAX_REQUESTS = 100
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-
-  userRateLimit.count++
-  return true
-}
-
-interface RouteContext {
-  params: Promise<{ id: string }>
-}
-
-export async function GET(request: Request, context: RouteContext) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const ip = getClientIp(request)
 
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -47,8 +26,15 @@ export async function GET(request: Request, context: RouteContext) {
     )
   }
 
+  if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
+    return NextResponse.json(
+      { error: 'Forbidden' },
+      { status: 403 }
+    )
+  }
+
   try {
-    const { id } = await context.params
+    const { id } = await params
 
     const sale = await prisma.sale.findUnique({
       where: { id },

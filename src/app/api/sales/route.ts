@@ -5,30 +5,10 @@ import prisma from '@/lib/prisma'
 import { saleSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
-
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000
-const MAX_REQUESTS = 100
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-
-  userRateLimit.count++
-  return true
-}
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
 export async function GET(request: Request) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
 
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -95,7 +75,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
 
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -141,6 +121,19 @@ export async function POST(request: Request) {
 
     const { productId, quantity, discount, customerId, paymentMethod } = validation.data
 
+    if (customerId) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true, isActive: true },
+      })
+      if (!customer || !customer.isActive) {
+        return NextResponse.json(
+          { error: 'Customer not found' },
+          { status: 404 }
+        )
+      }
+    }
+
     const product = await prisma.product.findUnique({
       where: { id: productId },
     })
@@ -164,6 +157,10 @@ export async function POST(request: Request) {
     const totalAmount = Math.max(0, (unitPrice * quantity) - safeDiscount)
 
     const [sale] = await prisma.$transaction([
+      prisma.product.update({
+        where: { id: productId },
+        data: { quantity: { decrement: quantity } },
+      }),
       prisma.sale.create({
         data: {
           productId,
@@ -174,10 +171,6 @@ export async function POST(request: Request) {
           customerId: customerId || null,
           paymentMethod,
         },
-      }),
-      prisma.product.update({
-        where: { id: productId },
-        data: { quantity: product.quantity - quantity },
       }),
       prisma.stockMovement.create({
         data: {

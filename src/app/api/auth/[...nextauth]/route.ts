@@ -3,28 +3,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import prisma from '@/lib/prisma'
 import { auditLogger } from '@/lib/security/audit'
-
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>()
-const LOCKOUT_THRESHOLD = 5
-const LOCKOUT_WINDOW = 15 * 60 * 1000 // 15 minutes
-
-function checkLoginRateLimit(identifier: string): boolean {
-  const now = Date.now()
-  const record = loginAttempts.get(identifier)
-  
-  if (!record || now - record.lastAttempt > LOCKOUT_WINDOW) {
-    loginAttempts.set(identifier, { count: 1, lastAttempt: now })
-    return true
-  }
-  
-  if (record.count >= LOCKOUT_THRESHOLD) {
-    return false
-  }
-  
-  record.count++
-  record.lastAttempt = now
-  return true
-}
+import { checkRateLimit } from '@/lib/security/rateLimit'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -39,10 +18,14 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Invalid credentials')
         }
 
-        const ip = req?.headers?.['x-forwarded-for'] as string || 'unknown'
-        const lockoutKey = `${credentials.email}:${ip}`
+        const forwarded = req?.headers?.['x-forwarded-for']
+        const ip = Array.isArray(forwarded)
+          ? forwarded[0]
+          : typeof forwarded === 'string'
+            ? forwarded.split(',')[0].trim()
+            : 'unknown'
 
-        if (!checkLoginRateLimit(lockoutKey)) {
+        if (!checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000)) {
           await auditLogger.logAuth(
             credentials.email,
             'LOGIN_LOCKED_OUT',
@@ -77,8 +60,6 @@ export const authOptions: NextAuthOptions = {
           )
           throw new Error('Invalid credentials')
         }
-
-        loginAttempts.delete(lockoutKey)
         
         await prisma.user.update({
           where: { id: user.id },
@@ -103,7 +84,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt' as const,
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: 24 * 60 * 60,
   },
   callbacks: {
     async jwt({ token, user }) {

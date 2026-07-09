@@ -4,34 +4,14 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { supplierSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
+import { setCorsHeaders } from '@/lib/cors'
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000
-const MAX_REQUESTS = 100
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-
-  userRateLimit.count++
-  return true
-}
-
-interface RouteContext {
-  params: Promise<{ id: string }>
-}
-
-export async function GET(request: Request, { params }: RouteContext) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const ip = getClientIp(request)
 
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -49,9 +29,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     )
   }
 
-  const { id } = await params
-
   try {
+    const { id } = await params
     const supplier = await prisma.supplier.findUnique({
       where: { id },
     })
@@ -63,7 +42,8 @@ export async function GET(request: Request, { params }: RouteContext) {
       )
     }
 
-    return NextResponse.json(supplier)
+    const response = NextResponse.json(supplier)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch supplier:', error)
     return NextResponse.json(
@@ -73,8 +53,11 @@ export async function GET(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function PUT(request: Request, { params }: RouteContext) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const ip = getClientIp(request)
 
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -99,9 +82,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
     )
   }
 
-  const { id } = await params
-
   try {
+    const { id } = await params
     const existing = await prisma.supplier.findUnique({
       where: { id },
     })
@@ -144,7 +126,8 @@ export async function PUT(request: Request, { params }: RouteContext) {
       { name: supplier.name }
     )
 
-    return NextResponse.json(supplier)
+    const response = NextResponse.json(supplier)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to update supplier:', error)
     return NextResponse.json(
@@ -154,8 +137,11 @@ export async function PUT(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(request: Request, { params }: RouteContext) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const ip = getClientIp(request)
 
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -180,9 +166,8 @@ export async function DELETE(request: Request, { params }: RouteContext) {
     )
   }
 
-  const { id } = await params
-
   try {
+    const { id } = await params
     const existing = await prisma.supplier.findUnique({
       where: { id },
     })
@@ -207,7 +192,8 @@ export async function DELETE(request: Request, { params }: RouteContext) {
       { name: supplier.name }
     )
 
-    return NextResponse.json({ message: 'Supplier deleted' })
+    const response = NextResponse.json({ message: 'Supplier deleted' })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to delete supplier:', error)
     return NextResponse.json(

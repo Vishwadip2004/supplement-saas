@@ -4,33 +4,14 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { customerSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
-
-const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000
-const MAX_REQUESTS = 100
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const userRateLimit = rateLimit.get(ip)
-  
-  if (!userRateLimit || now - userRateLimit.lastReset > RATE_LIMIT_WINDOW) {
-    rateLimit.set(ip, { count: 1, lastReset: now })
-    return true
-  }
-  
-  if (userRateLimit.count >= MAX_REQUESTS) {
-    return false
-  }
-  
-  userRateLimit.count++
-  return true
-}
+import { setCorsHeaders } from '@/lib/cors'
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -61,7 +42,8 @@ export async function GET(
       )
     }
     
-    return NextResponse.json(customer)
+    const response = NextResponse.json(customer)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch customer:', error)
     return NextResponse.json(
@@ -75,7 +57,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -124,7 +106,7 @@ export async function PUT(
       where: { id },
     })
     
-    if (!existing) {
+    if (!existing || !existing.isActive) {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }
@@ -147,7 +129,8 @@ export async function PUT(
       }
     )
     
-    return NextResponse.json(customer)
+    const response = NextResponse.json(customer)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to update customer:', error)
     return NextResponse.json(
@@ -161,7 +144,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const ip = request.headers.get('x-forwarded-for') || 'unknown'
+  const ip = getClientIp(request)
   
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
@@ -192,17 +175,10 @@ export async function DELETE(
       where: { id },
     })
     
-    if (!existing) {
+    if (!existing || !existing.isActive) {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }
-      )
-    }
-    
-    if (!existing.isActive) {
-      return NextResponse.json(
-        { error: 'Customer is already deactivated' },
-        { status: 400 }
       )
     }
     
@@ -219,7 +195,8 @@ export async function DELETE(
       { name: existing.name, email: existing.email }
     )
     
-    return NextResponse.json({ message: 'Customer deleted successfully' })
+    const response = NextResponse.json({ message: 'Customer deleted successfully' })
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to delete customer:', error)
     return NextResponse.json(

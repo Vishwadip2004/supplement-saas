@@ -45,7 +45,7 @@ export function calculateProfit(purchasePrice: number, sellingPrice: number): nu
 }
 
 export function calculateProfitMargin(purchasePrice: number, sellingPrice: number): number {
-  if (purchasePrice === 0) return 0
+  if (purchasePrice === 0) return sellingPrice > 0 ? Infinity : 0
   return ((sellingPrice - purchasePrice) / purchasePrice) * 100
 }
 
@@ -54,7 +54,7 @@ export function isExpiringSoon(expiryDate: Date | string, daysThreshold: number 
   const now = new Date()
   const threshold = new Date()
   threshold.setDate(now.getDate() + daysThreshold)
-  return expiry <= threshold
+  return expiry > now && expiry <= threshold
 }
 
 export function isLowStock(quantity: number, minStock: number): boolean {

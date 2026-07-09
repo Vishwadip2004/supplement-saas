@@ -38,6 +38,7 @@ export interface Customer {
   email?: string
   phone?: string
   address?: string
+  isActive: boolean
   createdAt: Date
   updatedAt: Date
 }

@@ -1,36 +1,31 @@
 export const securityConfig = {
-  // JWT Configuration
   jwt: {
     secret: process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET,
     expiresIn: '15m',
     refreshExpiresIn: '7d',
   },
   
-  // Session Configuration
   session: {
-    maxAge: 24 * 60 * 60, // 24 hours
-    updateAge: 24 * 60 * 60, // 24 hours
+    maxAge: 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
   },
   
-  // Password Policy
   password: {
     minLength: 12,
     requireUppercase: true,
     requireLowercase: true,
     requireNumbers: true,
     requireSpecialChars: true,
-    maxAge: 90, // days
+    maxAge: 90,
     historyCount: 12,
   },
   
-  // Rate Limiting
   rateLimit: {
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // requests per window
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     skipSuccessfulRequests: false,
   },
   
-  // Encryption
   encryption: {
     algorithm: 'aes-256-gcm',
     keyLength: 32,
@@ -38,15 +33,17 @@ export const securityConfig = {
     tagLength: 16,
   },
   
-  // CORS
   cors: {
     origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
     credentials: true,
   },
   
-  // API Security
   api: {
     maxRequestSize: '10mb',
-    timeout: 30000, // 30 seconds
+    timeout: 30000,
   },
+}
+
+if (process.env.NODE_ENV === 'production' && !securityConfig.jwt.secret) {
+  console.error('[SECURITY] WARNING: JWT_SECRET/NEXTAUTH_SECRET is not configured. JWT verification may fail.')
 }
