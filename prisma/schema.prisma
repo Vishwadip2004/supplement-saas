@@ -67,6 +67,8 @@ model User {
   password      String    // Hashed password
   role          Role      @default(STAFF)
   isActive      Boolean   @default(true)
+  mfaEnabled    Boolean   @default(false)
+  mfaSecret     String?
   lastLogin     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

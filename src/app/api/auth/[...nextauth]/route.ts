@@ -59,6 +59,12 @@ export const authOptions: NextAuthOptions = {
           )
           throw new Error('Invalid credentials')
         }
+
+        const mfaVerified = (credentials as Record<string, string>).mfaVerified === 'true'
+
+        if (user.mfaEnabled && !mfaVerified) {
+          throw new Error('MFA_REQUIRED')
+        }
         
         await prisma.user.update({
           where: { id: user.id },

@@ -6,6 +6,7 @@ export interface User {
   name: string
   role: 'ADMIN' | 'MANAGER' | 'STAFF'
   isActive: boolean
+  mfaEnabled: boolean
   lastLogin?: Date
   createdAt: Date
   updatedAt: Date
