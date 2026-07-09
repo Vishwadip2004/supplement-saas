@@ -1,10 +1,28 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+const publicPaths = ['/', '/auth/login', '/auth/register', '/api/auth']
+
+function isPublicPath(pathname: string): boolean {
+  return publicPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
+}
+
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  
+  if (!isPublicPath(pathname)) {
+    const sessionToken = request.cookies.get('next-auth.session-token')?.value
+      || request.cookies.get('__Secure-next-auth.session-token')?.value
+    
+    if (!sessionToken) {
+      const loginUrl = new URL('/auth/login', request.url)
+      loginUrl.searchParams.set('callbackUrl', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+  }
+  
   const response = NextResponse.next()
   
-  // Security Headers
   response.headers.set('X-DNS-Prefetch-Control', 'on')
   response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
   response.headers.set('X-XSS-Protection', '1; mode=block')
@@ -12,14 +30,10 @@ export function middleware(request: NextRequest) {
   response.headers.set('X-Content-Type-Options', 'nosniff')
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-  
-  // Content Security Policy
   response.headers.set(
     'Content-Security-Policy',
     "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';"
   )
-  
-  // Rate limiting headers
   response.headers.set('X-RateLimit-Limit', '100')
   response.headers.set('X-RateLimit-Remaining', '99')
   
@@ -28,6 +42,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 }

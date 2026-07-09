@@ -4,7 +4,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -38,7 +37,6 @@ model User {
   updatedAt     DateTime  @updatedAt
   
   // Relations
-  sales         Sale[]
   auditLogs     AuditLog[]
   sessions      Session[]
   
@@ -80,6 +78,7 @@ model Product {
   // Relations
   sales         Sale[]
   stockMovements StockMovement[]
+  purchaseOrderItems PurchaseOrderItem[]
   
   @@map("products")
 }

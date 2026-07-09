@@ -1,17 +1,27 @@
 import { prisma } from '@/lib/prisma'
+import { AuditStatus } from '@prisma/client'
 
 export interface AuditLog {
   userId?: string
   action: string
   resource: string
   resourceId?: string
-  details?: Record<string, any>
+  details?: Record<string, unknown>
   ipAddress?: string
   userAgent?: string
   status: 'success' | 'failure' | 'warning'
 }
 
 export class AuditLogger {
+  private static mapStatus(status: AuditLog['status']): AuditStatus {
+    const statusMap: Record<AuditLog['status'], AuditStatus> = {
+      success: AuditStatus.SUCCESS,
+      failure: AuditStatus.FAILURE,
+      warning: AuditStatus.WARNING,
+    }
+    return statusMap[status]
+  }
+
   static async log(data: AuditLog): Promise<void> {
     try {
       await prisma.auditLog.create({
@@ -23,7 +33,7 @@ export class AuditLogger {
           details: data.details ? JSON.stringify(data.details) : null,
           ipAddress: data.ipAddress,
           userAgent: data.userAgent,
-          status: data.status,
+          status: this.mapStatus(data.status),
           timestamp: new Date(),
         },
       })
@@ -43,7 +53,7 @@ export class AuditLogger {
     })
   }
   
-  static async logDataChange(userId: string, resource: string, resourceId: string, action: string, details?: Record<string, any>): Promise<void> {
+  static async logDataChange(userId: string, resource: string, resourceId: string, action: string, details?: Record<string, unknown>): Promise<void> {
     await this.log({
       userId,
       action,

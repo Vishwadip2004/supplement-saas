@@ -2,12 +2,11 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
-import { productSchema, validateInput } from '@/lib/security/validation'
+import { customerSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 
-// Rate limiting
 const rateLimit = new Map<string, { count: number; lastReset: number }>()
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000 // 15 minutes
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000
 const MAX_REQUESTS = 100
 
 function checkRateLimit(ip: string): boolean {
@@ -49,43 +48,38 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
+    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
-    const where = {
-      isActive: true,
-      ...(search && {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' as const } },
-          { sku: { contains: search, mode: 'insensitive' as const } },
-          { category: { contains: search, mode: 'insensitive' as const } },
-          { brand: { contains: search, mode: 'insensitive' as const } },
-        ],
-      }),
-    }
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+            { phone: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}
 
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
+    const [customers, total] = await Promise.all([
+      prisma.customer.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      prisma.product.count({ where }),
+      prisma.customer.count({ where }),
     ])
 
+    const pages = Math.ceil(total / limit)
+    
     return NextResponse.json({
-      data: products,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
+      data: customers,
+      pagination: { page, limit, total, pages },
     })
   } catch (error) {
-    console.error('Failed to fetch products:', error)
+    console.error('Failed to fetch customers:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -112,7 +106,6 @@ export async function POST(request: Request) {
     )
   }
   
-  // Only ADMIN and MANAGER can create products
   if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
     return NextResponse.json(
       { error: 'Forbidden' },
@@ -122,7 +115,7 @@ export async function POST(request: Request) {
   
   try {
     const body = await request.json()
-    const validation = validateInput(productSchema, body)
+    const validation = validateInput(customerSchema, body)
     
     if (!validation.success) {
       return NextResponse.json(
@@ -131,21 +124,21 @@ export async function POST(request: Request) {
       )
     }
     
-    const product = await prisma.product.create({
+    const customer = await prisma.customer.create({
       data: validation.data,
     })
     
     await auditLogger.logDataChange(
       session.user.id,
-      'product',
-      product.id,
+      'customer',
+      customer.id,
       'CREATE',
-      { name: product.name, sku: product.sku }
+      { name: customer.name, email: customer.email }
     )
     
-    return NextResponse.json(product, { status: 201 })
+    return NextResponse.json(customer, { status: 201 })
   } catch (error) {
-    console.error('Failed to create product:', error)
+    console.error('Failed to create customer:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

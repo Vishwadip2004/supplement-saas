@@ -49,6 +49,14 @@ export const supplierSchema = z.object({
   notes: z.string().optional(),
 })
 
+// Customer validation schemas
+export const customerSchema = z.object({
+  name: z.string().min(1, 'Customer name is required'),
+  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+})
+
 // Validation helper
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data)
