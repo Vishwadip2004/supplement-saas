@@ -62,6 +62,14 @@ export const purchaseOrderSchema = z.object({
   items: z.array(purchaseOrderItemSchema).min(1, 'At least one item is required'),
 })
 
+export const stockMovementSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  quantity: z.number().int().positive('Quantity must be positive'),
+  type: z.enum(['IN', 'ADJUSTMENT']),
+  reference: z.string().max(100).optional(),
+  notes: z.string().max(1000).optional(),
+})
+
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data)
   if (result.success) {
