@@ -50,6 +50,18 @@ export const customerSchema = z.object({
   address: z.string().max(500).optional(),
 })
 
+export const purchaseOrderItemSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  quantity: z.number().int().positive('Quantity must be positive'),
+  unitPrice: z.number().positive('Unit price must be positive'),
+})
+
+export const purchaseOrderSchema = z.object({
+  supplierId: z.string().uuid('Invalid supplier ID'),
+  notes: z.string().max(1000).optional(),
+  items: z.array(purchaseOrderItemSchema).min(1, 'At least one item is required'),
+})
+
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {
   const result = schema.safeParse(data)
   if (result.success) {
