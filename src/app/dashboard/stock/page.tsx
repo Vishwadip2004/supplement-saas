@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { csrfFetch } from '@/lib/csrf-client'
 
 interface Product { id: string; name: string; sku: string; quantity: number }
 interface StockMovement {
@@ -113,7 +114,7 @@ export default function StockPage() {
     setSubmitting(true)
     setError('')
     try {
-      const res = await fetch('/api/stock-movements', {
+      const res = await csrfFetch('/api/stock-movements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

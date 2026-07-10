@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
+import { csrfFetch } from '@/lib/csrf-client'
 
 export default function SecurityPage() {
   const [mfaEnabled, setMfaEnabled] = useState(false)
@@ -47,7 +48,7 @@ export default function SecurityPage() {
     setError('')
     setSuccess('')
     try {
-      const res = await fetch('/api/auth/mfa/setup', { method: 'POST' })
+      const res = await csrfFetch('/api/auth/mfa/setup', { method: 'POST' })
       if (!res.ok) {
         const data = await res.json()
         setError(data.error || 'Failed to setup MFA')
@@ -67,7 +68,7 @@ export default function SecurityPage() {
     setSubmitting(true)
     setError('')
     try {
-      const res = await fetch('/api/auth/mfa/verify', {
+      const res = await csrfFetch('/api/auth/mfa/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: verifyCode }),
@@ -95,7 +96,7 @@ export default function SecurityPage() {
     setSubmitting(true)
     setError('')
     try {
-      const res = await fetch('/api/auth/mfa/disable', {
+      const res = await csrfFetch('/api/auth/mfa/disable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: disableCode }),
@@ -136,16 +137,9 @@ export default function SecurityPage() {
 
     setChangingPassword(true)
     try {
-      const csrfRes = await fetch('/api/csrf')
-      const csrfData = await csrfRes.json()
-      const csrfToken = csrfData.csrfToken
-
-      const res = await fetch('/api/auth/change-password', {
+      const res = await csrfFetch('/api/user/change-password', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword }),
       })
 

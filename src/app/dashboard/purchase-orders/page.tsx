@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import { csrfFetch } from '@/lib/csrf-client'
 
 interface Supplier { id: string; name: string }
 interface Product { id: string; name: string; sku: string }
@@ -122,7 +123,7 @@ export default function PurchaseOrdersPage() {
     setSubmitting(true)
     setError('')
     try {
-      const res = await fetch('/api/purchase-orders', {
+      const res = await csrfFetch('/api/purchase-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -144,7 +145,7 @@ export default function PurchaseOrdersPage() {
 
   const handleStatusUpdate = async (id: string, status: string) => {
     try {
-      const res = await fetch(`/api/purchase-orders/${id}`, {
+      const res = await csrfFetch(`/api/purchase-orders/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
@@ -163,7 +164,7 @@ export default function PurchaseOrdersPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this purchase order?')) return
     try {
-      const res = await fetch(`/api/purchase-orders/${id}`, { method: 'DELETE' })
+      const res = await csrfFetch(`/api/purchase-orders/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed to delete')

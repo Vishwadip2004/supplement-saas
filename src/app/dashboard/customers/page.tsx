@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import type { Customer } from '@/types'
+import { csrfFetch } from '@/lib/csrf-client'
 
 const emptyForm = { name: '', email: '', phone: '', address: '' }
 
@@ -116,7 +117,7 @@ export default function CustomersPage() {
     try {
       const url = editingId ? `/api/customers/${editingId}` : '/api/customers'
       const method = editingId ? 'PUT' : 'POST'
-      const res = await fetch(url, {
+      const res = await csrfFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -142,7 +143,7 @@ export default function CustomersPage() {
 
     setError('')
     try {
-      const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' })
+      const res = await csrfFetch(`/api/customers/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Failed to delete customer')
       setSuccess('Customer deleted successfully')
       loadCustomers(page, search)

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { Product, Customer, SaleWithRelations } from '@/types'
+import { csrfFetch } from '@/lib/csrf-client'
 
 interface CartItem {
   productId: string
@@ -125,7 +126,7 @@ export default function SalesPage() {
 
     setSubmitting(true)
     try {
-      const res = await fetch('/api/sales', {
+      const res = await csrfFetch('/api/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import type { Supplier } from '@/types'
+import { csrfFetch } from '@/lib/csrf-client'
 
 interface FormData {
   name: string
@@ -148,7 +149,7 @@ export default function SuppliersPage() {
         : '/api/suppliers'
       const method = editingId ? 'PUT' : 'POST'
 
-      const res = await fetch(url, {
+      const res = await csrfFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -178,7 +179,7 @@ export default function SuppliersPage() {
     setDeletingId(id)
 
     try {
-      const res = await fetch(`/api/suppliers/${id}`, { method: 'DELETE' })
+      const res = await csrfFetch(`/api/suppliers/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
         throw new Error(data?.error || 'Failed to delete supplier')

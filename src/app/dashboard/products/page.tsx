@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import type { Product } from '@/types'
 import { formatCurrency, formatDate } from '@/utils'
+import { csrfFetch } from '@/lib/csrf-client'
 
 interface ProductFormData {
   name: string
@@ -148,7 +149,7 @@ export default function ProductsPage() {
         : '/api/products'
       const method = editingProduct ? 'PUT' : 'POST'
 
-      const res = await fetch(url, {
+      const res = await csrfFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -203,7 +204,7 @@ export default function ProductsPage() {
 
     try {
       setError('')
-      const res = await fetch(`/api/products/${product.id}`, {
+      const res = await csrfFetch(`/api/products/${product.id}`, {
         method: 'DELETE',
       })
 
