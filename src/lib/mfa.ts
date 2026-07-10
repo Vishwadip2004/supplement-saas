@@ -1,4 +1,5 @@
 import * as OTPAuth from 'otpauth'
+import QRCode from 'qrcode'
 
 const APP_NAME = 'SupplementShop Pro'
 
@@ -13,15 +14,9 @@ export function createTOTPSecret(email: string): OTPAuth.TOTP {
   })
 }
 
-export function generateQRCodeDataUri(totp: OTPAuth.TOTP): string {
+export async function generateQRCodeDataUri(totp: OTPAuth.TOTP): Promise<string> {
   const uri = totp.toString()
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-    <rect width="200" height="200" fill="white"/>
-    <text x="100" y="100" text-anchor="middle" font-size="12" fill="black">
-      ${encodeURIComponent(uri)}
-    </text>
-  </svg>`
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+  return QRCode.toDataURL(uri, { width: 192, margin: 1 })
 }
 
 export function verifyTOTP(secret: string, token: string): boolean {

@@ -160,7 +160,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-900">Sale processed</p>
-                  <p className="text-xs text-gray-500">{sale.product.name} x{sale.quantity} - ₹{Number(sale.totalAmount).toFixed(2)}</p>
+                  <p className="text-xs text-gray-500">{sale.product.name} x{sale.quantity} - ${Number(sale.totalAmount).toFixed(2)}</p>
                 </div>
                 <span className="ml-auto text-xs text-gray-500">{new Date(sale.createdAt).toLocaleDateString()}</span>
               </div>

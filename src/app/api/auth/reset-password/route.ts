@@ -20,6 +20,35 @@ const resetPasswordSchema = z.object({
     .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
 })
 
+export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const token = url.searchParams.get('token')
+  const email = url.searchParams.get('email')
+
+  if (!token || !email) {
+    return NextResponse.json({ error: 'Missing parameters' }, { status: 400 })
+  }
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: { email },
+      select: { passwordResetToken: true, passwordResetExpires: true },
+    })
+
+    if (!user || !user.passwordResetToken || !user.passwordResetExpires) {
+      return NextResponse.json({ error: 'Invalid reset link' }, { status: 400 })
+    }
+
+    if (user.passwordResetExpires < new Date()) {
+      return NextResponse.json({ error: 'Reset link has expired' }, { status: 400 })
+    }
+
+    return NextResponse.json({ valid: true })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 export async function POST(request: Request) {
   if (!validateCsrfRequest(request)) {
     return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })

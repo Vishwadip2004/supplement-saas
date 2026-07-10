@@ -23,5 +23,13 @@ export function validateCsrfRequest(request: Request): boolean {
 
   if (!cookieToken || !headerToken) return false
 
-  return cookieToken === headerToken
+  const a = new TextEncoder().encode(cookieToken)
+  const b = new TextEncoder().encode(headerToken)
+  if (a.length !== b.length) return false
+
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a[i] ^ b[i]
+  }
+  return result === 0
 }

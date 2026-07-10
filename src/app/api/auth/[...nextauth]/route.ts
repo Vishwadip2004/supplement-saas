@@ -161,6 +161,7 @@ export const authOptions: NextAuthOptions = {
                 token.exp = 0
               }
             }
+            token.iat = Math.floor(Date.now() / 1000)
           } catch {
             // Keep existing token values on DB error
           }

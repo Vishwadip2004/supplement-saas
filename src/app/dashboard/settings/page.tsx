@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Image from 'next/image'
 import { csrfFetch } from '@/lib/csrf-client'
 
 export default function SecurityPage() {
   const [mfaEnabled, setMfaEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [qrUri, setQrUri] = useState('')
+  const [qrCode, setQrCode] = useState('')
   const [secret, setSecret] = useState('')
   const [verifyCode, setVerifyCode] = useState('')
   const [setupStep, setSetupStep] = useState<'idle' | 'show-qr' | 'verify'>('idle')
@@ -55,7 +54,7 @@ export default function SecurityPage() {
         return
       }
       const data = await res.json()
-      setQrUri(data.uri)
+      setQrCode(data.qrCode)
       setSecret(data.secret)
       setSetupStep('show-qr')
     } catch {
@@ -81,7 +80,7 @@ export default function SecurityPage() {
       setMfaEnabled(true)
       setSetupStep('idle')
       setSecret('')
-      setQrUri('')
+      setQrCode('')
       setSuccess('MFA enabled successfully')
       setVerifyCode('')
     } catch {
@@ -251,7 +250,7 @@ export default function SecurityPage() {
             </p>
             <div className="flex justify-center mb-4">
               <div className="bg-white p-4 border rounded-lg">
-                <Image src={qrUri} alt="MFA QR Code" width={192} height={192} />
+                <img src={qrCode} alt="MFA QR Code" width={192} height={192} />
               </div>
             </div>
             <p className="text-sm text-gray-600 mb-2">Or enter this secret manually:</p>
@@ -280,7 +279,7 @@ export default function SecurityPage() {
               </button>
             </div>
             <button
-              onClick={() => { setSetupStep('idle'); setVerifyCode(''); setQrUri(''); setSecret('') }}
+              onClick={() => { setSetupStep('idle'); setVerifyCode(''); setQrCode(''); setSecret('') }}
               className="mt-4 text-sm text-indigo-600 hover:text-indigo-500"
             >
               Cancel

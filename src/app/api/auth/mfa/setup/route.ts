@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
-import { createTOTPSecret, getTOTPUri } from '@/lib/mfa'
+import { createTOTPSecret, getTOTPUri, generateQRCodeDataUri } from '@/lib/mfa'
 import { extractTenantId } from '@/lib/tenant'
 import { getEncryption } from '@/lib/security/encryption'
 import { validateCsrfRequest } from '@/lib/csrf'
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
 
     const totp = createTOTPSecret(user.email)
     const uri = getTOTPUri(totp.secret.base32, user.email)
+    const qrDataUri = await generateQRCodeDataUri(totp)
     const encryption = await getEncryption()
     const encryptedSecret = encryption.encrypt(totp.secret.base32)
 
@@ -46,6 +47,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       uri,
+      secret: totp.secret.base32,
+      qrCode: qrDataUri,
     })
   } catch (error) {
     console.error('MFA setup failed:', error)
