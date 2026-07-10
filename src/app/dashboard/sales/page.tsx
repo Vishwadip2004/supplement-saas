@@ -13,7 +13,7 @@ interface CartItem {
 }
 
 export default function SalesPage() {
-  const [products, setProducts] = useState<Pick<Product, 'id' | 'name' | 'sellingPrice' | 'quantity'>[]>([])
+  const [products, setProducts] = useState<Pick<Product, 'id' | 'name' | 'sellingPrice' | 'quantity' | 'flavor'>[]>([])
   const [customers, setCustomers] = useState<Pick<Customer, 'id' | 'name'>[]>([])
   const [sales, setSales] = useState<SaleWithRelations[]>([])
   const [loading, setLoading] = useState(true)
@@ -212,7 +212,7 @@ export default function SalesPage() {
                 <option value="">Select a product</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} - ${Number(p.sellingPrice).toFixed(2)} (Stock: {p.quantity})
+                    {p.name}{p.flavor ? ` (${p.flavor})` : ''} - ${Number(p.sellingPrice).toFixed(2)} (Stock: {p.quantity})
                   </option>
                 ))}
               </select>

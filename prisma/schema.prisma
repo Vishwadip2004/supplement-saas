@@ -107,6 +107,7 @@ model Product {
   description   String?
   category      String
   brand         String
+  flavor        String?
   purchasePrice Decimal   @db.Decimal(10, 2)
   sellingPrice  Decimal   @db.Decimal(10, 2)
   quantity      Int       @default(0)

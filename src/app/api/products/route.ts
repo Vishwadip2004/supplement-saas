@@ -38,19 +38,24 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
+    const category = searchParams.get('category') || ''
+    const brand = searchParams.get('brand') || ''
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
     const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
-    const where = {
+    const where: Record<string, unknown> = {
       tenantId,
       isActive: true,
+      ...(category && { category }),
+      ...(brand && { brand }),
       ...(search && {
         OR: [
           { name: { contains: search, mode: 'insensitive' as const } },
           { sku: { contains: search, mode: 'insensitive' as const } },
           { category: { contains: search, mode: 'insensitive' as const } },
           { brand: { contains: search, mode: 'insensitive' as const } },
+          { flavor: { contains: search, mode: 'insensitive' as const } },
         ],
       }),
     }

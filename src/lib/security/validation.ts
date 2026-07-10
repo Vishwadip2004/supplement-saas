@@ -17,6 +17,7 @@ export const productSchema = z.object({
   description: z.string().max(2000).optional(),
   category: z.string().min(1, 'Category is required').max(100),
   brand: z.string().max(100).optional(),
+  flavor: z.string().max(100).optional(),
   purchasePrice: z.number().positive('Purchase price must be positive'),
   sellingPrice: z.number().positive('Selling price must be positive'),
   quantity: z.number().int().min(0, 'Quantity cannot be negative'),

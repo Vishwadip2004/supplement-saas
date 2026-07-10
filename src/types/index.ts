@@ -22,6 +22,7 @@ export interface Product {
   description?: string
   category: string
   brand: string
+  flavor?: string
   purchasePrice: number
   sellingPrice: number
   quantity: number
