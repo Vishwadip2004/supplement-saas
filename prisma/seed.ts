@@ -1,9 +1,14 @@
 import { PrismaClient, Role, PaymentMethod } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter })
+
+function generatePassword(): string {
+  return crypto.randomBytes(18).toString('base64url').slice(0, 16) + '!A1'
+}
 
 async function main() {
   console.log('Seeding database...')
@@ -20,8 +25,10 @@ async function main() {
 
   console.log('Created tenant:', tenant.name)
 
-  const adminPassword = await bcrypt.hash('Admin123!@#$', 12)
-  const staffPassword = await bcrypt.hash('Staff123!@#$', 12)
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || generatePassword()
+  const staffPassword = process.env.SEED_STAFF_PASSWORD || generatePassword()
+  const hashedAdmin = await bcrypt.hash(adminPassword, 14)
+  const hashedStaff = await bcrypt.hash(staffPassword, 14)
 
   const admin = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'admin@supplementshop.com' } },
@@ -29,7 +36,7 @@ async function main() {
     create: {
       email: 'admin@supplementshop.com',
       name: 'Admin User',
-      password: adminPassword,
+      password: hashedAdmin,
       role: Role.ADMIN,
       tenantId: tenant.id,
     },
@@ -41,7 +48,7 @@ async function main() {
     create: {
       email: 'manager@supplementshop.com',
       name: 'Manager User',
-      password: staffPassword,
+      password: hashedStaff,
       role: Role.MANAGER,
       tenantId: tenant.id,
     },
@@ -53,7 +60,7 @@ async function main() {
     create: {
       email: 'staff@supplementshop.com',
       name: 'Staff User',
-      password: staffPassword,
+      password: hashedStaff,
       role: Role.STAFF,
       tenantId: tenant.id,
     },
@@ -153,10 +160,14 @@ async function main() {
   console.log('Created', sales.length, 'sales')
   console.log('Seed complete!')
   console.log('')
-  console.log('Login credentials:')
-  console.log('  Admin:  admin@supplementshop.com / Admin123!@#$')
-  console.log('  Manager: manager@supplementshop.com / Staff123!@#$')
-  console.log('  Staff:  staff@supplementshop.com / Staff123!@#$')
+  console.log('Login credentials (use SEED_ADMIN_PASSWORD/SEED_STAFF_PASSWORD env vars to set custom passwords):')
+  console.log('  Admin:   admin@supplementshop.com')
+  console.log('  Manager: manager@supplementshop.com')
+  console.log('  Staff:   staff@supplementshop.com')
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    console.log('')
+    console.log('  Auto-generated passwords were used. Check server logs or reset via forgot-password.')
+  }
 }
 
 main()

@@ -94,8 +94,8 @@ export class AuditLogger {
     }
   }
 
-  static async logAuth(tx: TxClient | null, tenantId: string, userId: string, action: string, status: 'success' | 'failure', ipAddress?: string): Promise<void> {
-    await this.log(tx, { tenantId, userId, action, resource: 'auth', status, ipAddress })
+  static async logAuth(tx: TxClient | null, tenantId: string, userId: string | null, action: string, status: 'success' | 'failure', ipAddress?: string): Promise<void> {
+    await this.log(tx, { tenantId, userId: userId || undefined, action, resource: 'auth', status, ipAddress })
   }
 
   static async logDataChange(tx: TxClient | null, tenantId: string, userId: string, resource: string, resourceId: string, action: string, details?: Record<string, unknown>): Promise<void> {

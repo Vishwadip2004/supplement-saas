@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     })
     if (existingTenant) {
       return NextResponse.json(
-        { error: 'Shop URL already taken' },
+        { error: 'Registration failed' },
         { status: 409 }
       )
     }
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12)
+    const hashedPassword = await bcrypt.hash(password, 14)
 
     const result = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({

@@ -58,7 +58,7 @@ function LoginContent() {
       const result = await signIn('credentials', {
         email,
         password,
-        mfaVerified: 'true',
+        mfaCode,
         redirect: false,
         callbackUrl,
       })

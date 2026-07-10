@@ -144,10 +144,9 @@ export async function POST(request: Request) {
     }
 
     const sale = await prisma.$transaction(async (tx) => {
-      const product = await tx.product.findFirst({
-        where: { id: productId, tenantId, isActive: true },
-        select: { id: true, quantity: true, sellingPrice: true, name: true, sku: true },
-      })
+      const [product] = await tx.$queryRaw<
+        Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string }>
+      >`SELECT * FROM products WHERE id = ${productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
 
       if (!product) {
         throw new Error('PRODUCT_NOT_FOUND')

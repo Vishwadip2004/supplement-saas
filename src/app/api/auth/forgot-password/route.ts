@@ -66,7 +66,9 @@ export async function POST(request: Request) {
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`
 
-    console.log(`[DEV] Password reset link for ${email}: ${resetUrl}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[DEV] Password reset link for ${email}: ${resetUrl}`)
+    }
 
     return NextResponse.json({ message: 'If the email exists, a reset link has been sent' })
   } catch (error) {

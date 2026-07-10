@@ -33,7 +33,7 @@ export function verifyTOTP(secret: string, token: string): boolean {
     secret: OTPAuth.Secret.fromBase32(secret),
   })
 
-  const delta = totp.validate({ token, window: 0 })
+  const delta = totp.validate({ token, window: 1 })
   return delta !== null
 }
 

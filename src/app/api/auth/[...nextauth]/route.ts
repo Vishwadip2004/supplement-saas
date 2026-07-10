@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs'
 import prisma from '@/lib/prisma'
 import { auditLogger } from '@/lib/security/audit'
 import { checkRateLimit } from '@/lib/security/rateLimit'
+import { verifyTOTP } from '@/lib/mfa'
+import { getEncryption } from '@/lib/security/encryption'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -12,7 +14,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
-        mfaVerified: { label: 'MFA Verified', type: 'text' },
+        mfaCode: { label: 'MFA Code', type: 'text' },
       },
       async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) {
@@ -29,6 +31,19 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findFirst({
           where: { email: credentials.email },
         })
+
+        if (user && !user.isActive && user.failedLoginAttempts >= 10) {
+          const lastAttempt = user.updatedAt
+          const lockoutDuration = 30 * 60 * 1000
+          if (lastAttempt && Date.now() - lastAttempt.getTime() > lockoutDuration) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { isActive: true, failedLoginAttempts: 0 },
+            })
+          } else {
+            throw new Error('Account temporarily locked. Try again later or reset your password.')
+          }
+        }
 
         if (!checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000)) {
           if (user) {
@@ -78,8 +93,20 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Invalid credentials')
         }
 
-        if (user.mfaEnabled && credentials.mfaVerified !== 'true') {
-          throw new Error('MFA_REQUIRED')
+        if (user.mfaEnabled) {
+          if (!credentials.mfaCode) {
+            throw new Error('MFA_REQUIRED')
+          }
+          if (!user.mfaSecret) {
+            throw new Error('MFA configuration error')
+          }
+          const encryption = await getEncryption()
+          const decryptedSecret = encryption.decrypt(user.mfaSecret)
+          const isValidCode = verifyTOTP(decryptedSecret, credentials.mfaCode)
+          if (!isValidCode) {
+            await auditLogger.logAuth(null, user.tenantId, user.id, 'MFA_FAILED', 'failure', ip)
+            throw new Error('Invalid MFA code')
+          }
         }
 
         await prisma.user.update({

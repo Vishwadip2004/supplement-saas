@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12)
+    const hashedPassword = await bcrypt.hash(password, 14)
 
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -95,6 +95,7 @@ export async function POST(request: Request) {
           isActive: true,
         },
       })
+      await tx.session.deleteMany({ where: { userId: user.id } })
       await addPasswordToHistory(tx, user.id, hashedPassword)
     })
 
