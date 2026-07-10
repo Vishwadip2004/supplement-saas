@@ -9,9 +9,14 @@ import { addPasswordToHistory } from '@/lib/security/passwordHistory'
 import { validateCsrfRequest } from '@/lib/csrf'
 
 const registerSchema = userSchema.extend({
-  shopName: z.string().min(2).max(100),
-  shopSlug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
-})
+  shopName: z.string().min(2).max(100).optional(),
+  shopSlug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens').optional(),
+  tenantName: z.string().min(2).max(100).optional(),
+  tenantSlug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens').optional(),
+}).refine(
+  (data) => (data.shopName && data.shopSlug) || (data.tenantName && data.tenantSlug),
+  { message: 'Either shopName+shopSlug or tenantName+tenantSlug is required' }
+)
 
 export async function POST(request: Request) {
   if (!validateCsrfRequest(request)) {
@@ -38,7 +43,16 @@ export async function POST(request: Request) {
       )
     }
 
-    const { email, name, password, shopName, shopSlug } = validation.data
+    const { email, name, password } = validation.data
+    const shopName = validation.data.shopName || validation.data.tenantName
+    const shopSlug = validation.data.shopSlug || validation.data.tenantSlug
+
+    if (!shopName || !shopSlug) {
+      return NextResponse.json(
+        { error: 'Shop name and slug are required' },
+        { status: 400 }
+      )
+    }
 
     const existingTenant = await prisma.tenant.findUnique({
       where: { slug: shopSlug },

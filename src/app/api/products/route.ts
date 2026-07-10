@@ -146,6 +146,7 @@ export async function POST(request: Request) {
     const product = await prisma.product.create({
       data: {
         ...validation.data,
+        brand: validation.data.brand || '',
         tenantId,
       },
     })

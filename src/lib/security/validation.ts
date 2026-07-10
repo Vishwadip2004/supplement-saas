@@ -16,7 +16,7 @@ export const productSchema = z.object({
   barcode: z.string().max(100).optional(),
   description: z.string().max(2000).optional(),
   category: z.string().min(1, 'Category is required').max(100),
-  brand: z.string().min(1, 'Brand is required').max(100),
+  brand: z.string().max(100).optional(),
   purchasePrice: z.number().positive('Purchase price must be positive'),
   sellingPrice: z.number().positive('Selling price must be positive'),
   quantity: z.number().int().min(0, 'Quantity cannot be negative'),
@@ -29,13 +29,27 @@ export const productSchema = z.object({
   storageLocation: z.string().max(100).optional(),
 })
 
-export const saleSchema = z.object({
+export const saleItemSchema = z.object({
   productId: z.string().uuid('Invalid product ID'),
   quantity: z.number().int().positive('Quantity must be positive'),
-  discount: z.number().min(0, 'Discount cannot be negative').max(100000, 'Discount too large').optional(),
-  customerId: z.string().uuid('Invalid customer ID').optional(),
-  paymentMethod: z.enum(['CASH', 'CARD', 'TRANSFER', 'OTHER']),
+  unitPrice: z.number().positive('Unit price must be positive').optional(),
+  discount: z.number().min(0).max(100000).optional(),
 })
+
+export const saleSchema = z.union([
+  z.object({
+    productId: z.string().uuid('Invalid product ID'),
+    quantity: z.number().int().positive('Quantity must be positive'),
+    discount: z.number().min(0, 'Discount cannot be negative').max(100000, 'Discount too large').optional(),
+    customerId: z.string().uuid('Invalid customer ID').optional(),
+    paymentMethod: z.enum(['CASH', 'CARD', 'TRANSFER', 'OTHER']),
+  }),
+  z.object({
+    items: z.array(saleItemSchema).min(1, 'At least one item is required'),
+    customerId: z.string().uuid('Invalid customer ID').optional(),
+    paymentMethod: z.enum(['CASH', 'CARD', 'TRANSFER', 'OTHER']),
+  }),
+])
 
 export const supplierSchema = z.object({
   name: z.string().min(1, 'Supplier name is required').max(255),
@@ -68,7 +82,7 @@ export const purchaseOrderSchema = z.object({
 export const stockMovementSchema = z.object({
   productId: z.string().uuid('Invalid product ID'),
   quantity: z.number().int().positive('Quantity must be positive'),
-  type: z.enum(['IN', 'ADJUSTMENT']),
+  type: z.enum(['IN', 'OUT', 'ADJUSTMENT']),
   reference: z.string().max(100).optional(),
   notes: z.string().max(1000).optional(),
 })

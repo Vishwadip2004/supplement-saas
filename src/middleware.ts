@@ -8,7 +8,7 @@ function arrayBufferToHex(buffer: ArrayBuffer): string {
     .join('')
 }
 
-const publicPaths = ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/api/auth']
+const publicPaths = ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/error', '/api/auth']
 
 function isPublicPath(pathname: string): boolean {
   return publicPaths.some(path => pathname === path || pathname.startsWith(path + '/'))
@@ -60,7 +60,7 @@ export function middleware(request: NextRequest) {
     const tokenHex = arrayBufferToHex(tokenArray.buffer)
     response.cookies.set(getCsrfCookieName(), tokenHex, {
       httpOnly: false,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production' && request.url.startsWith('https://'),
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60,

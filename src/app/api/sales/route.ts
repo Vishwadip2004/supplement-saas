@@ -133,7 +133,10 @@ export async function POST(request: Request) {
       )
     }
 
-    const { productId, quantity, discount, customerId, paymentMethod } = validation.data
+    const data = validation.data
+    const customerId = data.customerId
+    const paymentMethod = data.paymentMethod
+    const isMultiItem = 'items' in data
 
     if (customerId) {
       const customer = await prisma.customer.findFirst({
@@ -149,64 +152,117 @@ export async function POST(request: Request) {
     }
 
     const sale = await prisma.$transaction(async (tx) => {
-      const [product] = await tx.$queryRaw<
-        Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string }>
-      >`SELECT * FROM products WHERE id = ${productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
+      if (isMultiItem) {
+        const saleRecords = []
+        for (const item of data.items) {
+          const [product] = await tx.$queryRaw<
+            Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string }>
+          >`SELECT * FROM products WHERE id = ${item.productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
 
-      if (!product) {
-        throw new Error('PRODUCT_NOT_FOUND')
+          if (!product) {
+            throw new Error('PRODUCT_NOT_FOUND')
+          }
+
+          const unitPrice = item.unitPrice || Number(product.sellingPrice)
+          const qty = item.quantity
+          if (product.quantity < qty) {
+            throw new Error(`INSUFFICIENT_STOCK:${product.quantity}:${product.name}`)
+          }
+
+          const safeDiscount = Math.min(item.discount || 0, unitPrice * qty)
+          const totalAmount = Math.max(0, (unitPrice * qty) - safeDiscount)
+
+          const [saleRecord] = await Promise.all([
+            tx.sale.create({
+              data: {
+                productId: item.productId,
+                quantity: qty,
+                unitPrice,
+                discount: safeDiscount,
+                totalAmount,
+                customerId: customerId || null,
+                paymentMethod,
+                tenantId,
+              },
+            }),
+            tx.product.update({
+              where: { id: item.productId, tenantId },
+              data: { quantity: { decrement: qty } },
+            }),
+            tx.stockMovement.create({
+              data: {
+                productId: item.productId,
+                quantity: -qty,
+                type: 'OUT',
+                reference: 'Sale',
+                tenantId,
+              },
+            }),
+          ])
+          saleRecords.push(saleRecord)
+        }
+        return saleRecords
+      } else {
+        const { productId, quantity, discount } = data as { productId: string; quantity: number; discount?: number }
+        const [product] = await tx.$queryRaw<
+          Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string }>
+        >`SELECT * FROM products WHERE id = ${productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
+
+        if (!product) {
+          throw new Error('PRODUCT_NOT_FOUND')
+        }
+
+        if (product.quantity < quantity) {
+          throw new Error(`INSUFFICIENT_STOCK:${product.quantity}:${product.name}`)
+        }
+
+        const unitPrice = Number(product.sellingPrice)
+        const safeDiscount = Math.min(discount || 0, unitPrice * quantity)
+        const totalAmount = Math.max(0, (unitPrice * quantity) - safeDiscount)
+
+        const [saleRecord] = await Promise.all([
+          tx.sale.create({
+            data: {
+              productId,
+              quantity,
+              unitPrice,
+              discount: safeDiscount,
+              totalAmount,
+              customerId: customerId || null,
+              paymentMethod,
+              tenantId,
+            },
+          }),
+          tx.product.update({
+            where: { id: productId, tenantId },
+            data: { quantity: { decrement: quantity } },
+          }),
+          tx.stockMovement.create({
+            data: {
+              productId,
+              quantity: -quantity,
+              type: 'OUT',
+              reference: 'Sale',
+              tenantId,
+            },
+          }),
+        ])
+
+        await auditLogger.logDataChange(
+          tx,
+          tenantId,
+          session.user.id,
+          'sale',
+          saleRecord.id,
+          'CREATE',
+          { productId, product: product.name, sku: product.sku, quantity, totalAmount: saleRecord.totalAmount }
+        )
+
+        return [saleRecord]
       }
-
-      if (product.quantity < quantity) {
-        throw new Error(`INSUFFICIENT_STOCK:${product.quantity}`)
-      }
-
-      const unitPrice = Number(product.sellingPrice)
-      const safeDiscount = Math.min(discount || 0, unitPrice * quantity)
-      const totalAmount = Math.max(0, (unitPrice * quantity) - safeDiscount)
-
-      const [saleRecord] = await Promise.all([
-        tx.sale.create({
-          data: {
-            productId,
-            quantity,
-            unitPrice,
-            discount: safeDiscount,
-            totalAmount,
-            customerId: customerId || null,
-            paymentMethod,
-            tenantId,
-          },
-        }),
-        tx.product.update({
-          where: { id: productId, tenantId },
-          data: { quantity: { decrement: quantity } },
-        }),
-        tx.stockMovement.create({
-          data: {
-            productId,
-            quantity: -quantity,
-            type: 'OUT',
-            reference: 'Sale',
-            tenantId,
-          },
-        }),
-      ])
-
-      await auditLogger.logDataChange(
-        tx,
-        tenantId,
-        session.user.id,
-        'sale',
-        saleRecord.id,
-        'CREATE',
-        { productId, product: product.name, sku: product.sku, quantity, totalAmount: saleRecord.totalAmount }
-      )
-
-      return saleRecord
     })
 
-    const response = NextResponse.json(sale, { status: 201 })
+    const response = NextResponse.json(isMultiItem ? sale : sale[0], { status: 201 })
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error'
@@ -214,8 +270,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
     if (message.startsWith('INSUFFICIENT_STOCK:')) {
-      const available = message.split(':')[1]
-      return NextResponse.json({ error: `Insufficient stock. Available: ${available}` }, { status: 400 })
+      const parts = message.split(':')
+      const available = parts[1]
+      const productName = parts[2] || 'product'
+      return NextResponse.json({ error: `Insufficient stock for ${productName}. Available: ${available}` }, { status: 400 })
     }
     console.error('Failed to create sale:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
