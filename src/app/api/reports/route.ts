@@ -9,7 +9,7 @@ import { extractTenantId } from '@/lib/tenant'
 export async function GET(request: Request) {
   const ip = getClientIp(request)
 
-  if (!checkRateLimit(ip)) {
+  if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }

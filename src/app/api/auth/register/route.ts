@@ -6,6 +6,7 @@ import { auditLogger } from '@/lib/security/audit'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { z } from 'zod'
 import { addPasswordToHistory } from '@/lib/security/passwordHistory'
+import { validateCsrfRequest } from '@/lib/csrf'
 
 const registerSchema = userSchema.extend({
   shopName: z.string().min(2).max(100),
@@ -13,9 +14,13 @@ const registerSchema = userSchema.extend({
 })
 
 export async function POST(request: Request) {
+  if (!validateCsrfRequest(request)) {
+    return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+  }
+
   const ip = getClientIp(request)
 
-  if (!checkRateLimit(ip, 10)) {
+  if (!(await checkRateLimit(ip, 10))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }

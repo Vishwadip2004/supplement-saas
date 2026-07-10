@@ -45,7 +45,7 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
-        if (!checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000)) {
+        if (!(await checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000))) {
           if (user) {
             await auditLogger.logAuth(null, user.tenantId, user.id, 'LOGIN_LOCKED_OUT', 'failure', ip)
           }
@@ -135,7 +135,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt' as const,
-    maxAge: 8 * 60 * 60,
+    maxAge: 60 * 60,
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -144,7 +144,29 @@ export const authOptions: NextAuthOptions = {
         token.role = u.role
         token.id = u.id
         token.tenantId = u.tenantId
+        token.iat = Math.floor(Date.now() / 1000)
       }
+
+      if (token.id && token.iat) {
+        const elapsed = Math.floor(Date.now() / 1000) - (token.iat as number)
+        if (elapsed > 5 * 60) {
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: { role: true, isActive: true },
+            })
+            if (dbUser) {
+              token.role = dbUser.role
+              if (!dbUser.isActive) {
+                token.exp = 0
+              }
+            }
+          } catch {
+            // Keep existing token values on DB error
+          }
+        }
+      }
+
       return token
     },
     async session({ session, token }) {

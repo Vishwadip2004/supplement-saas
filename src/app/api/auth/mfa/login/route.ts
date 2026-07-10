@@ -5,6 +5,7 @@ import { getEncryption } from '@/lib/security/encryption'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { auditLogger } from '@/lib/security/audit'
 import { z } from 'zod'
+import { validateCsrfRequest } from '@/lib/csrf'
 
 const loginMfaSchema = z.object({
   userId: z.string().uuid(),
@@ -12,9 +13,13 @@ const loginMfaSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  if (!validateCsrfRequest(request)) {
+    return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+  }
+
   const ip = getClientIp(request)
 
-  if (!checkRateLimit(`mfa:${ip}`, 5, 15 * 60 * 1000)) {
+  if (!(await checkRateLimit(`mfa:${ip}`, 5, 15 * 60 * 1000))) {
     return NextResponse.json(
       { error: 'Too many attempts. Please try again later.' },
       { status: 429 }

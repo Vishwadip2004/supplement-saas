@@ -4,15 +4,20 @@ import { getEncryption } from '@/lib/security/encryption'
 import { auditLogger } from '@/lib/security/audit'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { z } from 'zod'
+import { validateCsrfRequest } from '@/lib/csrf'
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address').max(255),
 })
 
 export async function POST(request: Request) {
+  if (!validateCsrfRequest(request)) {
+    return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+  }
+
   const ip = getClientIp(request)
 
-  if (!checkRateLimit(`forgot-password:${ip}`, 3, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`forgot-password:${ip}`, 3, 60 * 60 * 1000))) {
     return NextResponse.json(
       { error: 'Too many requests. Please try again later.' },
       { status: 429 }

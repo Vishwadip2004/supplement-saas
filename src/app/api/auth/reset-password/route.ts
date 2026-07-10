@@ -6,6 +6,7 @@ import { auditLogger } from '@/lib/security/audit'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { z } from 'zod'
 import { checkPasswordHistory, addPasswordToHistory } from '@/lib/security/passwordHistory'
+import { validateCsrfRequest } from '@/lib/csrf'
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -20,9 +21,13 @@ const resetPasswordSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  if (!validateCsrfRequest(request)) {
+    return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+  }
+
   const ip = getClientIp(request)
 
-  if (!checkRateLimit(`reset-password:${ip}`, 10, 60 * 60 * 1000)) {
+  if (!(await checkRateLimit(`reset-password:${ip}`, 10, 60 * 60 * 1000))) {
     return NextResponse.json(
       { error: 'Too many requests. Please try again later.' },
       { status: 429 }

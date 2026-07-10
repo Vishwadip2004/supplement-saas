@@ -5,8 +5,13 @@ import prisma from '@/lib/prisma'
 import { createTOTPSecret, getTOTPUri } from '@/lib/mfa'
 import { extractTenantId } from '@/lib/tenant'
 import { getEncryption } from '@/lib/security/encryption'
+import { validateCsrfRequest } from '@/lib/csrf'
 
-export async function POST() {
+export async function POST(request: Request) {
+  if (!validateCsrfRequest(request)) {
+    return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+  }
+
   const session = await getServerSession(authOptions)
 
   if (!session) {

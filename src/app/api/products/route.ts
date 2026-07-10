@@ -7,11 +7,12 @@ import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
+import { validateCsrfRequest } from '@/lib/csrf'
 
 export async function GET(request: Request) {
   const ip = getClientIp(request)
 
-  if (!checkRateLimit(ip)) {
+  if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
@@ -84,9 +85,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!validateCsrfRequest(request)) {
+    return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+  }
+
   const ip = getClientIp(request)
 
-  if (!checkRateLimit(ip)) {
+  if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }

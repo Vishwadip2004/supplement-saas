@@ -6,12 +6,17 @@ import { verifyTOTP } from '@/lib/mfa'
 import { extractTenantId } from '@/lib/tenant'
 import { getEncryption } from '@/lib/security/encryption'
 import { z } from 'zod'
+import { validateCsrfRequest } from '@/lib/csrf'
 
 const verifySchema = z.object({
   code: z.string().length(6, 'Code must be 6 digits'),
 })
 
 export async function POST(request: Request) {
+  if (!validateCsrfRequest(request)) {
+    return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
+  }
+
   const session = await getServerSession(authOptions)
 
   if (!session) {
