@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local CI workflow (needs workflow-scope PAT to push)
+.github/workflows/ci.yml
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
