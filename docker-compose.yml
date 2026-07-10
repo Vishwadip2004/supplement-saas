@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENCRYPTION_SALT=${ENCRYPTION_SALT}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+    restart: unless-stopped

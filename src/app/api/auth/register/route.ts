@@ -54,12 +54,13 @@ export async function POST(request: Request) {
       )
     }
 
-    const existingTenant = await prisma.tenant.findUnique({
-      where: { slug: shopSlug },
+    const existingTenant = await prisma.tenant.findFirst({
+      where: { OR: [{ slug: shopSlug }, { name: shopName }] },
     })
     if (existingTenant) {
+      const reason = existingTenant.slug === shopSlug ? 'slug' : 'name'
       return NextResponse.json(
-        { error: 'Registration failed' },
+        { error: `A shop with this ${reason} already exists` },
         { status: 409 }
       )
     }

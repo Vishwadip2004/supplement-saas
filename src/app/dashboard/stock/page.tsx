@@ -30,7 +30,7 @@ export default function StockPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [formData, setFormData] = useState({ productId: '', quantity: 1, type: 'IN' as 'IN' | 'ADJUSTMENT', reference: '', notes: '' })
+  const [formData, setFormData] = useState({ productId: '', quantity: 1, type: 'IN' as 'IN' | 'OUT' | 'ADJUSTMENT', reference: '', notes: '' })
   const [submitting, setSubmitting] = useState(false)
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
@@ -157,6 +157,7 @@ export default function StockPage() {
         >
           <option value="">All Types</option>
           <option value="IN">Stock In</option>
+          <option value="OUT">Stock Out</option>
           <option value="ADJUSTMENT">Adjustment</option>
         </select>
       </div>
@@ -238,10 +239,11 @@ export default function StockPage() {
                   <label className="block text-sm font-medium text-gray-700">Type</label>
                   <select
                     value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value as 'IN' | 'ADJUSTMENT' })}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value as 'IN' | 'OUT' | 'ADJUSTMENT' })}
                     className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2"
                   >
                     <option value="IN">Stock In</option>
+                    <option value="OUT">Stock Out</option>
                     <option value="ADJUSTMENT">Adjustment</option>
                   </select>
                 </div>

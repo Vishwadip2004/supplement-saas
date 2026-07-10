@@ -17,6 +17,13 @@ export default function SecurityPage() {
   const [disableCode, setDisableCode] = useState('')
   const [showDisable, setShowDisable] = useState(false)
 
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [passwordSuccess, setPasswordSuccess] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+
   useEffect(() => {
     let cancelled = false
     async function checkMfaStatus() {
@@ -113,6 +120,51 @@ export default function SecurityPage() {
     return <div className="text-center py-12 text-gray-500">Loading...</div>
   }
 
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError('')
+    setPasswordSuccess('')
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match')
+      return
+    }
+    if (newPassword.length < 12) {
+      setPasswordError('Password must be at least 12 characters')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      const csrfRes = await fetch('/api/csrf')
+      const csrfData = await csrfRes.json()
+      const csrfToken = csrfData.csrfToken
+
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setPasswordError(data.error || 'Failed to change password')
+        return
+      }
+      setPasswordSuccess(data.message || 'Password changed successfully')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch {
+      setPasswordError('Failed to change password')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Security Settings</h1>
@@ -123,6 +175,61 @@ export default function SecurityPage() {
       {success && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>
       )}
+
+      <div className="bg-white shadow rounded-lg p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Change Password</h2>
+
+        {passwordError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{passwordError}</div>
+        )}
+        {passwordSuccess && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{passwordSuccess}</div>
+        )}
+
+        <form onSubmit={handlePasswordChange} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Current Password</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">New Password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              minLength={12}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">Min 12 characters, uppercase, lowercase, number, special character</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Confirm New Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={changingPassword}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {changingPassword ? 'Changing...' : 'Change Password'}
+            </button>
+          </div>
+        </form>
+      </div>
 
       <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Two-Factor Authentication</h2>

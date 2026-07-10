@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/test"
+          NEXTAUTH_SECRET: "test-secret-key-for-ci-only"
+          NEXTAUTH_URL: "http://localhost:3000"
+          ENCRYPTION_KEY: "test-encryption-key-base64-encoded"
+          ENCRYPTION_SALT: "test-salt-1234567890abcdef"

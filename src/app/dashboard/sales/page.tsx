@@ -3,6 +3,14 @@
 import { useState, useEffect } from 'react'
 import type { Product, Customer, SaleWithRelations } from '@/types'
 
+interface CartItem {
+  productId: string
+  name: string
+  sellingPrice: number
+  quantity: number
+  discount: number
+}
+
 export default function SalesPage() {
   const [products, setProducts] = useState<Pick<Product, 'id' | 'name' | 'sellingPrice' | 'quantity'>[]>([])
   const [customers, setCustomers] = useState<Pick<Customer, 'id' | 'name'>[]>([])
@@ -15,11 +23,12 @@ export default function SalesPage() {
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
 
-  const [productId, setProductId] = useState('')
-  const [quantity, setQuantity] = useState(1)
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [selectedProductId, setSelectedProductId] = useState('')
+  const [selectedQuantity, setSelectedQuantity] = useState(1)
+  const [selectedDiscount, setDiscount] = useState(0)
   const [customerId, setCustomerId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('CASH')
-  const [discount, setDiscount] = useState(0)
 
   const loadSales = async (pageNum: number = 1, searchTerm: string = '') => {
     try {
@@ -74,18 +83,43 @@ export default function SalesPage() {
     loadSales(1, search)
   }
 
-  const selectedProduct = products.find((p) => p.id === productId)
-  const total = selectedProduct
-    ? Number(selectedProduct.sellingPrice) * quantity - discount
-    : 0
+  const addToCart = () => {
+    if (!selectedProductId) return
+    const product = products.find((p) => p.id === selectedProductId)
+    if (!product) return
+
+    const existingIndex = cart.findIndex((item) => item.productId === selectedProductId)
+    if (existingIndex >= 0) {
+      const updated = [...cart]
+      updated[existingIndex].quantity += selectedQuantity
+      setCart(updated)
+    } else {
+      setCart([...cart, {
+        productId: selectedProductId,
+        name: product.name,
+        sellingPrice: Number(product.sellingPrice),
+        quantity: selectedQuantity,
+        discount: selectedDiscount,
+      }])
+    }
+    setSelectedProductId('')
+    setSelectedQuantity(1)
+    setDiscount(0)
+  }
+
+  const removeFromCart = (index: number) => {
+    setCart(cart.filter((_, i) => i !== index))
+  }
+
+  const cartTotal = cart.reduce((sum, item) => sum + (item.sellingPrice * item.quantity - item.discount), 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setSuccess('')
 
-    if (!productId) {
-      setError('Please select a product')
+    if (cart.length === 0) {
+      setError('Please add at least one item to the cart')
       return
     }
 
@@ -95,27 +129,30 @@ export default function SalesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productId,
-          quantity,
-          unitPrice: selectedProduct?.sellingPrice || 0,
+          items: cart.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.sellingPrice,
+            discount: item.discount,
+          })),
           customerId: customerId || undefined,
           paymentMethod,
-          discount,
         }),
       })
 
-      if (!res.ok) throw new Error('Failed to create sale')
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to create sale')
+      }
 
-      setSuccess('Sale recorded successfully')
-      setProductId('')
-      setQuantity(1)
+      setSuccess(`Sale recorded: ${cart.length} item(s), total $${cartTotal.toFixed(2)}`)
+      setCart([])
       setCustomerId('')
       setPaymentMethod('CASH')
-      setDiscount(0)
 
       loadSales(page, search)
-    } catch {
-      setError('Failed to record sale')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record sale')
     } finally {
       setSubmitting(false)
     }
@@ -163,77 +200,116 @@ export default function SalesPage() {
       <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">New Sale</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="product"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Product *
-              </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">Product *</label>
               <select
-                id="product"
-                value={productId}
-                onChange={(e) => setProductId(e.target.value)}
+                value={selectedProductId}
+                onChange={(e) => setSelectedProductId(e.target.value)}
                 className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               >
                 <option value="">Select a product</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} - ₹{Number(p.sellingPrice).toFixed(2)} (Stock: {p.quantity})
+                    {p.name} - ${Number(p.sellingPrice).toFixed(2)} (Stock: {p.quantity})
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label
-                htmlFor="quantity"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Quantity
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Qty</label>
               <input
-                id="quantity"
                 type="number"
                 min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                value={selectedQuantity}
+                onChange={(e) => setSelectedQuantity(parseInt(e.target.value) || 1)}
                 className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="customer"
-                className="block text-sm font-medium text-gray-700"
+              <label className="block text-sm font-medium text-gray-700">Discount</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={selectedDiscount}
+                onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
+                className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={addToCart}
+                disabled={!selectedProductId}
+                className="w-full px-4 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Customer (Optional)
-              </label>
+                Add to Cart
+              </button>
+            </div>
+          </div>
+
+          {cart.length > 0 && (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Price</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Discount</th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Subtotal</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {cart.map((item, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-medium text-gray-900">{item.name}</td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">${item.sellingPrice.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">{item.quantity}</td>
+                      <td className="px-4 py-2 text-sm text-right text-gray-700">${item.discount.toFixed(2)}</td>
+                      <td className="px-4 py-2 text-sm text-right font-medium text-gray-900">
+                        ${(item.sellingPrice * item.quantity - item.discount).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <button type="button" onClick={() => removeFromCart(index)} className="text-red-600 hover:text-red-800 text-sm">Remove</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50">
+                  <tr>
+                    <td colSpan={4} className="px-4 py-2 text-right text-sm font-bold text-gray-900">Total:</td>
+                    <td className="px-4 py-2 text-right text-sm font-bold text-indigo-600">${cartTotal.toFixed(2)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Customer (Optional)</label>
               <select
-                id="customer"
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
                 className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               >
                 <option value="">Walk-in customer</option>
                 {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label
-                htmlFor="paymentMethod"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Payment Method
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Payment Method</label>
               <select
-                id="paymentMethod"
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
                 className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -244,44 +320,15 @@ export default function SalesPage() {
                 <option value="OTHER">Other</option>
               </select>
             </div>
-
-            <div>
-              <label
-                htmlFor="discount"
-                className="block text-sm font-medium text-gray-700"
-              >
-                Discount (Optional)
-              </label>
-              <input
-                id="discount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={discount}
-                onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)}
-                className="mt-1 block w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="flex items-end">
-              <div className="w-full">
-                <label className="block text-sm font-medium text-gray-700">
-                  Total
-                </label>
-                <div className="mt-1 px-3 py-3 bg-gray-50 border border-gray-300 rounded-lg text-lg font-bold text-gray-900">
-                  ₹{total.toFixed(2)}
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || cart.length === 0}
               className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? 'Processing...' : 'Record Sale'}
+              {submitting ? 'Processing...' : `Record Sale ($${cartTotal.toFixed(2)})`}
             </button>
           </div>
         </form>
