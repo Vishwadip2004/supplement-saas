@@ -32,7 +32,7 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'admin@supplementshop.com' } },
-    update: {},
+    update: { password: hashedAdmin, isActive: true, failedLoginAttempts: 0 },
     create: {
       email: 'admin@supplementshop.com',
       name: 'Admin User',
@@ -44,7 +44,7 @@ async function main() {
 
   const manager = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'manager@supplementshop.com' } },
-    update: {},
+    update: { password: hashedStaff, isActive: true, failedLoginAttempts: 0 },
     create: {
       email: 'manager@supplementshop.com',
       name: 'Manager User',
@@ -56,7 +56,7 @@ async function main() {
 
   const staff = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'staff@supplementshop.com' } },
-    update: {},
+    update: { password: hashedStaff, isActive: true, failedLoginAttempts: 0 },
     create: {
       email: 'staff@supplementshop.com',
       name: 'Staff User',
