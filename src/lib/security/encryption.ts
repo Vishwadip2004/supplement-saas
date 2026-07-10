@@ -1,6 +1,12 @@
 import crypto from 'crypto'
 import { securityConfig } from './config'
 
+const SCRYPT_PARAMS = {
+  N: 16384,
+  r: 8,
+  p: 1,
+}
+
 export class Encryption {
   private key: Buffer
   private algorithm = securityConfig.encryption.algorithm
@@ -16,7 +22,29 @@ export class Encryption {
       throw new Error('ENCRYPTION_SALT environment variable is required')
     }
     this.salt = Buffer.from(saltHex, 'hex')
-    this.key = crypto.scryptSync(key, this.salt, securityConfig.encryption.keyLength)
+    this.key = crypto.scryptSync(key, this.salt, securityConfig.encryption.keyLength, SCRYPT_PARAMS)
+  }
+  
+  static async deriveKey(secretKey: string, salt: Buffer, keyLength: number): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      crypto.scrypt(secretKey, salt, keyLength, SCRYPT_PARAMS, (err, derivedKey) => {
+        if (err) reject(err)
+        else resolve(derivedKey)
+      })
+    })
+  }
+
+  async initAsync(secretKey?: string, salt?: string): Promise<void> {
+    const key = secretKey || process.env.ENCRYPTION_KEY
+    if (!key) {
+      throw new Error('ENCRYPTION_KEY environment variable is required')
+    }
+    const saltHex = salt || process.env.ENCRYPTION_SALT
+    if (!saltHex) {
+      throw new Error('ENCRYPTION_SALT environment variable is required')
+    }
+    this.salt = Buffer.from(saltHex, 'hex')
+    this.key = await Encryption.deriveKey(key, this.salt, securityConfig.encryption.keyLength)
   }
   
   encrypt(text: string): string {
@@ -59,16 +87,27 @@ export class Encryption {
 }
 
 let _encryption: Encryption | null = null
+let _initPromise: Promise<void> | null = null
 
-export function getEncryption(): Encryption {
+export async function getEncryption(): Promise<Encryption> {
   if (!_encryption) {
     _encryption = new Encryption()
   }
+  if (!_initPromise) {
+    _initPromise = _encryption.initAsync()
+  }
+  await _initPromise
   return _encryption
 }
 
 export const encryption = new Proxy({} as Encryption, {
   get(_, prop) {
-    return (getEncryption() as unknown as Record<string | symbol, unknown>)[prop]
+    if (!_encryption) {
+      _encryption = new Encryption()
+      _initPromise = _encryption.initAsync()
+    }
+    return (...args: unknown[]) => {
+      return _initPromise!.then(() => (_encryption as unknown as Record<string, (...a: unknown[]) => unknown>)[prop as string](...args))
+    }
   },
 })

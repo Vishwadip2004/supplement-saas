@@ -31,7 +31,9 @@ export async function GET(request: Request) {
     const type = searchParams.get('type') || ''
 
     const where: Record<string, unknown> = { tenantId }
-    if (type) where.type = type
+    if (type && ['IN', 'OUT', 'ADJUSTMENT'].includes(type)) {
+      where.type = type
+    }
 
     const [movements, total] = await Promise.all([
       prisma.stockMovement.findMany({
@@ -84,54 +86,74 @@ export async function POST(request: Request) {
     const validation = validateInput(stockMovementSchema, body)
 
     if (!validation.success) {
+      const details = process.env.NODE_ENV === 'production'
+        ? { _errors: ['Validation failed'] }
+        : validation.errors.format()
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.errors.format() },
+        { error: 'Validation failed', details },
         { status: 400 }
       )
     }
 
     const { productId, quantity, type, reference, notes } = validation.data
 
-    const product = await prisma.product.findFirst({
-      where: { id: productId, tenantId },
-      select: { id: true, name: true, quantity: true },
+    const movement = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findFirst({
+        where: { id: productId, tenantId, isActive: true },
+        select: { id: true, name: true, quantity: true },
+      })
+
+      if (!product) {
+        throw new Error('PRODUCT_NOT_FOUND')
+      }
+
+      const quantityChange = type === 'IN' ? quantity : -quantity
+
+      if (type !== 'IN' && product.quantity + quantityChange < 0) {
+        throw new Error(`INSUFFICIENT_STOCK:${product.quantity}`)
+      }
+
+      const [movementRecord] = await Promise.all([
+        tx.stockMovement.create({
+          data: {
+            productId,
+            quantity: quantityChange,
+            type,
+            reference,
+            notes,
+            tenantId,
+          },
+        }),
+        tx.product.update({
+          where: { id: productId, tenantId },
+          data: { quantity: { increment: quantityChange } },
+        }),
+      ])
+
+      await auditLogger.logDataChange(
+        tx,
+        tenantId,
+        session.user.id,
+        'stockMovement',
+        movementRecord.id,
+        'CREATE',
+        { productId, product: product.name, type, quantity, previousStock: product.quantity }
+      )
+
+      return { movementRecord, productName: product.name, previousStock: product.quantity }
     })
 
-    if (!product) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 })
-    }
-
-    const quantityChange = type === 'IN' ? quantity : -quantity
-
-    const [movement] = await prisma.$transaction([
-      prisma.stockMovement.create({
-        data: {
-          productId,
-          quantity: quantityChange,
-          type,
-          reference,
-          notes,
-          tenantId,
-        },
-      }),
-      prisma.product.update({
-        where: { id: productId },
-        data: { quantity: { increment: quantityChange } },
-      }),
-    ])
-
-    await auditLogger.logDataChange(
-      tenantId,
-      session.user.id,
-      'stockMovement',
-      movement.id,
-      'CREATE',
-      { productId, product: product.name, type, quantity, previousStock: product.quantity }
-    )
-
-    const response = NextResponse.json(movement, { status: 201 })
+    const response = NextResponse.json(movement.movementRecord, { status: 201 })
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    if (message === 'PRODUCT_NOT_FOUND') {
+      return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+    }
+    if (message.startsWith('INSUFFICIENT_STOCK:')) {
+      const available = message.split(':')[1]
+      return NextResponse.json({ error: `Insufficient stock. Available: ${available}` }, { status: 400 })
+    }
     console.error('Failed to create stock movement:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

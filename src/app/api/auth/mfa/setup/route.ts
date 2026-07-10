@@ -31,7 +31,8 @@ export async function POST() {
 
     const totp = createTOTPSecret(user.email)
     const uri = getTOTPUri(totp.secret.base32, user.email)
-    const encryptedSecret = getEncryption().encrypt(totp.secret.base32)
+    const encryption = await getEncryption()
+    const encryptedSecret = encryption.encrypt(totp.secret.base32)
 
     await prisma.user.update({
       where: { id: user.id },
@@ -39,7 +40,6 @@ export async function POST() {
     })
 
     return NextResponse.json({
-      secret: totp.secret.base32,
       uri,
     })
   } catch (error) {

@@ -30,7 +30,15 @@ export async function GET(
     )
   }
   
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
   
   try {
     const { id } = await params
@@ -85,7 +93,15 @@ export async function PUT(
     )
   }
   
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
   
   try {
     const { id } = await params
@@ -101,8 +117,11 @@ export async function PUT(
     const validation = validateInput(customerSchema, body)
     
     if (!validation.success) {
+      const details = process.env.NODE_ENV === 'production'
+        ? { _errors: ['Validation failed'] }
+        : validation.errors.format()
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.errors.format() },
+        { error: 'Validation failed', details },
         { status: 400 }
       )
     }
@@ -124,6 +143,7 @@ export async function PUT(
     })
     
     await auditLogger.logDataChange(
+      null,
       tenantId,
       session.user.id,
       'customer',
@@ -175,7 +195,15 @@ export async function DELETE(
     )
   }
   
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
   
   try {
     const { id } = await params
@@ -196,6 +224,7 @@ export async function DELETE(
     })
     
     await auditLogger.logDataChange(
+      null,
       tenantId,
       session.user.id,
       'customer',

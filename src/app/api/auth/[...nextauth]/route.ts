@@ -12,6 +12,7 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        mfaVerified: { label: 'MFA Verified', type: 'text' },
       },
       async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) {
@@ -31,26 +32,43 @@ export const authOptions: NextAuthOptions = {
 
         if (!checkRateLimit(`login:${ip}`, 5, 15 * 60 * 1000)) {
           if (user) {
-            await auditLogger.logAuth(user.tenantId, user.id, 'LOGIN_LOCKED_OUT', 'failure', ip)
+            await auditLogger.logAuth(null, user.tenantId, user.id, 'LOGIN_LOCKED_OUT', 'failure', ip)
           }
           throw new Error('Account temporarily locked due to too many failed attempts')
         }
-        
+
         if (!user || !user.isActive) {
           await auditLogger.logAuth(
+            null,
             user?.tenantId || 'unknown',
-            credentials.email,
+            null,
             'LOGIN_FAILED',
             'failure',
             ip
           )
           throw new Error('Invalid credentials')
         }
-        
+
         const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
-        
+
         if (!isPasswordValid) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { failedLoginAttempts: { increment: 1 } },
+          }).catch(() => {})
+
+          const updatedUser = await prisma.user.findUnique({ where: { id: user.id } })
+          if (updatedUser && updatedUser.failedLoginAttempts >= 10) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { isActive: false },
+            })
+            await auditLogger.logAuth(null, user.tenantId, user.id, 'ACCOUNT_LOCKED', 'failure', ip)
+            throw new Error('Account has been locked due to too many failed attempts')
+          }
+
           await auditLogger.logAuth(
+            null,
             user.tenantId,
             user.id,
             'LOGIN_FAILED',
@@ -60,25 +78,24 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Invalid credentials')
         }
 
-        const mfaVerified = (credentials as Record<string, string>).mfaVerified === 'true'
-
-        if (user.mfaEnabled && !mfaVerified) {
+        if (user.mfaEnabled && credentials.mfaVerified !== 'true') {
           throw new Error('MFA_REQUIRED')
         }
-        
+
         await prisma.user.update({
           where: { id: user.id },
-          data: { lastLogin: new Date() },
+          data: { lastLogin: new Date(), failedLoginAttempts: 0 },
         })
-        
+
         await auditLogger.logAuth(
+          null,
           user.tenantId,
           user.id,
           'LOGIN_SUCCESS',
           'success',
           ip
         )
-        
+
         return {
           id: user.id,
           email: user.email,
@@ -91,7 +108,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt' as const,
-    maxAge: 24 * 60 * 60,
+    maxAge: 8 * 60 * 60,
   },
   callbacks: {
     async jwt({ token, user }) {

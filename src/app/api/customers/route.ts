@@ -27,7 +27,15 @@ export async function GET(request: Request) {
     )
   }
   
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
   
   try {
     const { searchParams } = new URL(request.url)
@@ -100,7 +108,15 @@ export async function POST(request: Request) {
     )
   }
   
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
   
   try {
     let body: unknown
@@ -115,8 +131,11 @@ export async function POST(request: Request) {
     const validation = validateInput(customerSchema, body)
     
     if (!validation.success) {
+      const details = process.env.NODE_ENV === 'production'
+        ? { _errors: ['Validation failed'] }
+        : validation.errors.format()
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.errors.format() },
+        { error: 'Validation failed', details },
         { status: 400 }
       )
     }
@@ -129,6 +148,7 @@ export async function POST(request: Request) {
     })
     
     await auditLogger.logDataChange(
+      null,
       tenantId,
       session.user.id,
       'customer',

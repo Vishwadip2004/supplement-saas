@@ -21,7 +21,10 @@ export const productSchema = z.object({
   sellingPrice: z.number().positive('Selling price must be positive'),
   quantity: z.number().int().min(0, 'Quantity cannot be negative'),
   minStock: z.number().int().min(0, 'Minimum stock cannot be negative'),
-  expiryDate: z.string().datetime({ message: 'Invalid date format' }).optional().or(z.literal('')),
+  expiryDate: z.string().datetime({ message: 'Invalid date format' }).optional().or(z.literal('')).refine(
+      (val) => !val || new Date(val) > new Date(),
+      { message: 'Expiry date must be in the future' }
+    ),
   batchNumber: z.string().max(50).optional(),
   storageLocation: z.string().max(100).optional(),
 })

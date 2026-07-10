@@ -10,25 +10,30 @@ import { extractTenantId } from '@/lib/tenant'
 
 export async function GET(request: Request) {
   const ip = getClientIp(request)
-  
+
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
     )
   }
-  
+
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
-  const tenantId = extractTenantId(session)
-  
+
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
@@ -80,32 +85,37 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const ip = getClientIp(request)
-  
+
   if (!checkRateLimit(ip)) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
     )
   }
-  
+
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
+
   if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
     return NextResponse.json(
       { error: 'Forbidden' },
       { status: 403 }
     )
   }
-  
-  const tenantId = extractTenantId(session)
-  
+
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     let body: unknown
     try {
@@ -117,22 +127,26 @@ export async function POST(request: Request) {
       )
     }
     const validation = validateInput(productSchema, body)
-    
+
     if (!validation.success) {
+      const details = process.env.NODE_ENV === 'production'
+        ? { _errors: ['Validation failed'] }
+        : validation.errors.format()
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.errors.format() },
+        { error: 'Validation failed', details },
         { status: 400 }
       )
     }
-    
+
     const product = await prisma.product.create({
       data: {
         ...validation.data,
         tenantId,
       },
     })
-    
+
     await auditLogger.logDataChange(
+      null,
       tenantId,
       session.user.id,
       'product',
@@ -140,7 +154,7 @@ export async function POST(request: Request) {
       'CREATE',
       { name: product.name, sku: product.sku }
     )
-    
+
     const response = NextResponse.json(product, { status: 201 })
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {

@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server'
 
-const allowedOrigins = [
-  process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-]
+function getAllowedOrigins(): string[] {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('NEXT_PUBLIC_APP_URL must be set in production')
+    }
+    return ['http://localhost:3000']
+  }
+  return [appUrl]
+}
+
+const allowedOrigins = getAllowedOrigins()
 
 export function setCorsHeaders(response: NextResponse, origin?: string | null): NextResponse {
   if (origin && allowedOrigins.includes(origin)) {

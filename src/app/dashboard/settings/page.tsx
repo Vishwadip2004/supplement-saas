@@ -72,6 +72,8 @@ export default function SecurityPage() {
       }
       setMfaEnabled(true)
       setSetupStep('idle')
+      setSecret('')
+      setQrUri('')
       setSuccess('MFA enabled successfully')
       setVerifyCode('')
     } catch {

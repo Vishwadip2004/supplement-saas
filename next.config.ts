@@ -26,10 +26,6 @@ const securityHeaders = [
     value: 'camera=(), microphone=(), geolocation=()',
   },
   {
-    key: 'Content-Security-Policy',
-    value: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self';",
-  },
-  {
     key: 'X-Powered-By',
     value: '',
   },

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 
 interface AuditLogEntry {
@@ -147,9 +147,8 @@ export default function AuditPage() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {logs.map((log) => (
-                <>
+                <Fragment key={log.id}>
                   <tr
-                    key={log.id}
                     className="hover:bg-gray-50 cursor-pointer"
                     onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
                   >
@@ -190,7 +189,7 @@ export default function AuditPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

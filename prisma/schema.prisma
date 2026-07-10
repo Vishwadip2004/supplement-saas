@@ -70,12 +70,16 @@ model User {
   mfaEnabled    Boolean   @default(false)
   mfaSecret     String?
   lastLogin     DateTime?
+  failedLoginAttempts Int @default(0)
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   auditLogs     AuditLog[]
   sessions      Session[]
+  passwordHistory PasswordHistory[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -252,6 +256,18 @@ model AuditLog {
   @@index([resource])
   @@index([timestamp])
   @@map("audit_logs")
+}
+
+model PasswordHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  password  String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_history")
 }
 
 model SystemConfig {

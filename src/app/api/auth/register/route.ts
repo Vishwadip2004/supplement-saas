@@ -5,6 +5,7 @@ import { userSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { z } from 'zod'
+import { addPasswordToHistory } from '@/lib/security/passwordHistory'
 
 const registerSchema = userSchema.extend({
   shopName: z.string().min(2).max(100),
@@ -71,10 +72,13 @@ export async function POST(request: Request) {
         },
       })
 
+      await addPasswordToHistory(tx, user.id, hashedPassword)
+
       return { tenant, user }
     })
 
     await auditLogger.logAuth(
+      null,
       result.tenant.id,
       result.user.id,
       'REGISTER_SUCCESS',

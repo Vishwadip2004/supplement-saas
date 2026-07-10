@@ -71,6 +71,13 @@ export default function RegisterPage() {
     setLoading(true)
     
     try {
+      const shopSlug = formData.shopName
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim()
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -78,6 +85,8 @@ export default function RegisterPage() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
+          shopName: formData.shopName,
+          shopSlug,
         }),
       })
 

@@ -132,6 +132,7 @@ export async function POST(request: Request) {
     })
 
     await auditLogger.logDataChange(
+      null,
       tenantId,
       session.user.id,
       'supplier',

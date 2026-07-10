@@ -128,6 +128,7 @@ export async function PUT(
     })
 
     await auditLogger.logDataChange(
+      null,
       tenantId,
       session.user.id,
       'purchaseOrder',
@@ -186,6 +187,7 @@ export async function DELETE(
     })
 
     await auditLogger.logDataChange(
+      null,
       tenantId,
       session.user.id,
       'purchaseOrder',

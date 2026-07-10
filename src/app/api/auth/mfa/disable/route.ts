@@ -50,7 +50,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'MFA secret not found' }, { status: 400 })
     }
 
-    const decryptedSecret = getEncryption().decrypt(user.mfaSecret)
+    const encryption = await getEncryption()
+    const decryptedSecret = encryption.decrypt(user.mfaSecret)
     const isValid = verifyTOTP(decryptedSecret, code)
 
     if (!isValid) {

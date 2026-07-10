@@ -1,19 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const [mfaRequired, setMfaRequired] = useState(false)
-  const [mfaUserId, setMfaUserId] = useState('')
   const [mfaCode, setMfaCode] = useState('')
   const [mfaLoading, setMfaLoading] = useState(false)
   const [mfaError, setMfaError] = useState('')
@@ -22,32 +23,24 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    
+
     try {
-      const checkRes = await fetch('/api/auth/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const checkData = await checkRes.json()
-
-      if (checkData.mfaRequired) {
-        setMfaUserId(checkData.userId)
-        setMfaRequired(true)
-        return
-      }
-
       const result = await signIn('credentials', {
         email,
         password,
         redirect: false,
+        callbackUrl,
       })
-      
+
+      if (result?.error === 'MFA_REQUIRED') {
+        setMfaRequired(true)
+        return
+      }
+
       if (result?.error) {
         setError('Invalid email or password')
       } else if (result?.ok) {
-        router.push('/dashboard')
+        router.push(callbackUrl)
       }
     } catch {
       setError('An error occurred. Please try again.')
@@ -62,29 +55,18 @@ export default function LoginPage() {
     setMfaError('')
 
     try {
-      const res = await fetch('/api/auth/mfa/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: mfaUserId, code: mfaCode }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        setMfaError(data.error || 'Invalid code')
-        return
-      }
-
       const result = await signIn('credentials', {
         email,
         password,
         mfaVerified: 'true',
         redirect: false,
+        callbackUrl,
       })
 
       if (result?.ok) {
-        router.push('/dashboard')
+        router.push(callbackUrl)
       } else {
-        setMfaError('Verification failed. Please try again.')
+        setMfaError('Invalid code. Please try again.')
       }
     } catch {
       setMfaError('An error occurred. Please try again.')
@@ -165,7 +147,7 @@ export default function LoginPage() {
                 {error}
               </div>
             )}
-            
+
             <div className="space-y-4">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">
@@ -183,7 +165,7 @@ export default function LoginPage() {
                   placeholder="you@example.com"
                 />
               </div>
-              
+
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                   Password
@@ -216,9 +198,9 @@ export default function LoginPage() {
               </div>
 
               <div className="text-sm">
-                <span className="font-medium text-gray-400 cursor-not-allowed">
+                <Link href="/auth/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
                   Forgot your password?
-                </span>
+                </Link>
               </div>
             </div>
 
@@ -245,5 +227,13 @@ export default function LoginPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   )
 }

@@ -6,7 +6,7 @@ export function createTOTPSecret(email: string): OTPAuth.TOTP {
   return new OTPAuth.TOTP({
     issuer: APP_NAME,
     label: email,
-    algorithm: 'SHA1',
+    algorithm: 'SHA256',
     digits: 6,
     period: 30,
     secret: new OTPAuth.Secret({ size: 20 }),
@@ -27,13 +27,13 @@ export function generateQRCodeDataUri(totp: OTPAuth.TOTP): string {
 export function verifyTOTP(secret: string, token: string): boolean {
   const totp = new OTPAuth.TOTP({
     issuer: APP_NAME,
-    algorithm: 'SHA1',
+    algorithm: 'SHA256',
     digits: 6,
     period: 30,
     secret: OTPAuth.Secret.fromBase32(secret),
   })
 
-  const delta = totp.validate({ token, window: 1 })
+  const delta = totp.validate({ token, window: 0 })
   return delta !== null
 }
 
@@ -41,7 +41,7 @@ export function getTOTPUri(secret: string, email: string): string {
   const totp = new OTPAuth.TOTP({
     issuer: APP_NAME,
     label: email,
-    algorithm: 'SHA1',
+    algorithm: 'SHA256',
     digits: 6,
     period: 30,
     secret: OTPAuth.Secret.fromBase32(secret),

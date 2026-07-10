@@ -43,15 +43,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
     }
 
-    const decryptedSecret = getEncryption().decrypt(user.mfaSecret)
+    const encryption = await getEncryption()
+    const decryptedSecret = encryption.decrypt(user.mfaSecret)
     const isValid = verifyTOTP(decryptedSecret, code)
 
     if (!isValid) {
-      await auditLogger.logAuth(user.tenantId, user.id, 'MFA_FAILED', 'failure', ip)
+      await auditLogger.logAuth(null, user.tenantId, user.id, 'MFA_FAILED', 'failure', ip)
       return NextResponse.json({ error: 'Invalid code' }, { status: 400 })
     }
 
-    await auditLogger.logAuth(user.tenantId, user.id, 'MFA_SUCCESS', 'success', ip)
+    await auditLogger.logAuth(null, user.tenantId, user.id, 'MFA_SUCCESS', 'success', ip)
 
     return NextResponse.json({ verified: true })
   } catch (error) {

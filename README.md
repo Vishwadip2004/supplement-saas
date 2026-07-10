@@ -52,9 +52,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | admin@supplement.com | Admin123!@#$ |
-| Manager | manager@supplement.com | Manager123!@#$ |
-| Staff | staff@supplement.com | Staff123!@#$ |
+| Admin | admin@supplementshop.com | Admin123!@#$ |
+| Manager | manager@supplementshop.com | Staff123!@#$ |
+| Staff | staff@supplementshop.com | Staff123!@#$ |
 
 ## Project Structure
 
