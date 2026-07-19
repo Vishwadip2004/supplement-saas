@@ -4,8 +4,24 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import type { Customer } from '@/types'
 import { csrfFetch } from '@/lib/csrf-client'
+import { formatCurrency } from '@/utils'
 
 const emptyForm = { name: '', email: '', phone: '', address: '' }
+
+interface CustomerHistory {
+  customer: Customer
+  summary: {
+    totalOrders: number
+    totalSpent: number
+    totalItems: number
+    averageOrderValue: number
+    firstPurchase: string | null
+    lastPurchase: string | null
+  }
+  frequentProducts: { name: string; sku: string; quantity: number; lastPurchased: string }[]
+  topCategories: { category: string; quantity: number }[]
+  recentSales: { id: string; quantity: number; totalAmount: number; createdAt: string; product: { name: string; sku: string; category: string } }[]
+}
 
 export default function CustomersPage() {
   const { data: session } = useSession()
@@ -22,6 +38,9 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyData, setHistoryData] = useState<CustomerHistory | null>(null)
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   const loadCustomers = async (pageNum: number = 1, searchTerm: string = '') => {
     try {
@@ -152,6 +171,21 @@ export default function CustomersPage() {
     }
   }
 
+  const viewHistory = async (customerId: string) => {
+    setLoadingHistory(true)
+    setShowHistory(true)
+    try {
+      const res = await fetch(`/api/customers/${customerId}/history`)
+      if (!res.ok) throw new Error('Failed to fetch history')
+      const data = await res.json()
+      setHistoryData(data)
+    } catch {
+      setHistoryData(null)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
@@ -274,6 +308,12 @@ export default function CustomersPage() {
                       {new Date(customer.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => viewHistory(customer.id)}
+                        className="text-green-600 hover:text-green-900 mr-4 transition-colors"
+                      >
+                        History
+                      </button>
                       {canManage && (
                         <>
                           <button
@@ -441,6 +481,110 @@ export default function CustomersPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75" onClick={() => { setShowHistory(false); setHistoryData(null); }} />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-6 border-b">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Purchase History: {historyData?.customer?.name || 'Loading...'}
+                </h3>
+                <button onClick={() => { setShowHistory(false); setHistoryData(null); }} className="text-gray-400 hover:text-gray-500">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-6">
+                {loadingHistory ? (
+                  <p className="text-center text-gray-500 py-8">Loading...</p>
+                ) : !historyData ? (
+                  <p className="text-center text-gray-500 py-8">Failed to load history</p>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="bg-indigo-50 rounded-lg p-4 text-center">
+                        <p className="text-2xl font-bold text-indigo-600">{historyData.summary.totalOrders}</p>
+                        <p className="text-sm text-gray-600">Orders</p>
+                      </div>
+                      <div className="bg-green-50 rounded-lg p-4 text-center">
+                        <p className="text-2xl font-bold text-green-600">{formatCurrency(historyData.summary.totalSpent)}</p>
+                        <p className="text-sm text-gray-600">Total Spent</p>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-4 text-center">
+                        <p className="text-2xl font-bold text-purple-600">{historyData.summary.totalItems}</p>
+                        <p className="text-sm text-gray-600">Items Bought</p>
+                      </div>
+                    </div>
+
+                    {historyData.frequentProducts.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Frequent Purchases</h4>
+                        <div className="space-y-2">
+                          {historyData.frequentProducts.map((p, i) => (
+                            <div key={i} className="flex justify-between items-center bg-gray-50 rounded-lg px-4 py-2">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{p.name}</p>
+                                <p className="text-xs text-gray-500">{p.sku}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-medium text-gray-900">{p.quantity} bought</p>
+                                <p className="text-xs text-gray-500">Last: {new Date(p.lastPurchased).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {historyData.topCategories.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Top Categories</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {historyData.topCategories.map((c, i) => (
+                            <span key={i} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
+                              {c.category} ({c.quantity})
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {historyData.recentSales.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">Recent Orders</h4>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
+                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {historyData.recentSales.map((sale) => (
+                                <tr key={sale.id}>
+                                  <td className="px-4 py-2 text-sm text-gray-900">{new Date(sale.createdAt).toLocaleDateString()}</td>
+                                  <td className="px-4 py-2 text-sm text-gray-900">{sale.product.name}</td>
+                                  <td className="px-4 py-2 text-sm text-right">{sale.quantity}</td>
+                                  <td className="px-4 py-2 text-sm text-right font-medium">{formatCurrency(Number(sale.totalAmount))}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

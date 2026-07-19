@@ -1,0 +1,1 @@
+{"tenantId":"unknown","userId":"nonexistent@test.com","action":"PASSWORD_RESET_REQUESTED","resource":"auth","status":"success","ipAddress":"unknown","details":null,"timestamp":"2026-07-11T10:45:31.299Z","fallback":true}

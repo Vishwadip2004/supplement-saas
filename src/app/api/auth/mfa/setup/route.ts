@@ -47,7 +47,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       uri,
-      secret: totp.secret.base32,
       qrCode: qrDataUri,
     })
   } catch (error) {

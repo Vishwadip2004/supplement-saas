@@ -78,9 +78,17 @@ export default function RegisterPage() {
         .replace(/-+/g, '-')
         .trim()
 
+      const csrfRes = await fetch('/api/csrf', { credentials: 'same-origin' })
+      const csrfData = await csrfRes.json().catch(() => ({ token: '' }))
+      const csrfToken = csrfData.token || ''
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
+        },
+        credentials: 'same-origin',
         body: JSON.stringify({
           name: formData.name,
           email: formData.email,

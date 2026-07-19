@@ -103,10 +103,9 @@ export async function POST(request: Request) {
     const { productId, quantity, type, reference, notes } = validation.data
 
     const movement = await prisma.$transaction(async (tx) => {
-      const product = await tx.product.findFirst({
-        where: { id: productId, tenantId, isActive: true },
-        select: { id: true, name: true, quantity: true },
-      })
+      const [product] = await tx.$queryRaw<
+        Array<{ id: string; name: string; quantity: number }>
+      >`SELECT * FROM products WHERE id = ${productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
 
       if (!product) {
         throw new Error('PRODUCT_NOT_FOUND')
@@ -156,8 +155,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
     if (message.startsWith('INSUFFICIENT_STOCK:')) {
-      const available = message.split(':')[1]
-      return NextResponse.json({ error: `Insufficient stock. Available: ${available}` }, { status: 400 })
+      return NextResponse.json({ error: 'Insufficient stock for this product' }, { status: 400 })
     }
     console.error('Failed to create stock movement:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

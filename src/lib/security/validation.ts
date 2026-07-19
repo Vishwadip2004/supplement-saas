@@ -30,11 +30,14 @@ export const productSchema = z.object({
   storageLocation: z.string().max(100).optional(),
 })
 
+export const productUpdateSchema = productSchema.partial()
+
 export const saleItemSchema = z.object({
   productId: z.string().uuid('Invalid product ID'),
   quantity: z.number().int().positive('Quantity must be positive'),
   unitPrice: z.number().positive('Unit price must be positive').optional(),
   discount: z.number().min(0).max(100000).optional(),
+  lotNumber: z.string().max(50).optional(),
 })
 
 export const saleSchema = z.union([
@@ -44,6 +47,7 @@ export const saleSchema = z.union([
     discount: z.number().min(0, 'Discount cannot be negative').max(100000, 'Discount too large').optional(),
     customerId: z.string().uuid('Invalid customer ID').optional(),
     paymentMethod: z.enum(['CASH', 'CARD', 'TRANSFER', 'OTHER']),
+    lotNumber: z.string().max(50).optional(),
   }),
   z.object({
     items: z.array(saleItemSchema).min(1, 'At least one item is required'),
@@ -86,6 +90,65 @@ export const stockMovementSchema = z.object({
   type: z.enum(['IN', 'OUT', 'ADJUSTMENT']),
   reference: z.string().max(100).optional(),
   notes: z.string().max(1000).optional(),
+})
+
+export const recallSchema = z.object({
+  batchNumber: z.string().min(1, 'Batch number is required').max(50),
+  reason: z.string().min(1, 'Reason is required').max(500),
+  notes: z.string().max(1000).optional(),
+})
+
+export const bundleItemSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  quantity: z.number().int().positive('Quantity must be positive'),
+})
+
+export const bundleSchema = z.object({
+  name: z.string().min(1, 'Bundle name is required').max(255),
+  description: z.string().max(1000).optional(),
+  bundlePrice: z.number().min(0).optional(),
+  discount: z.number().min(0).optional(),
+  items: z.array(bundleItemSchema).min(1, 'At least one item is required'),
+})
+
+export const bundleUpdateSchema = z.object({
+  id: z.string().uuid('Invalid bundle ID'),
+  name: z.string().min(1).max(255).optional(),
+  description: z.string().max(1000).optional(),
+  bundlePrice: z.number().min(0).optional(),
+  discount: z.number().min(0).optional(),
+  items: z.array(bundleItemSchema).min(1).optional(),
+})
+
+export const volumeDiscountSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(255),
+  description: z.string().max(1000).optional(),
+  minQuantity: z.number().int().positive('Minimum quantity must be positive'),
+  discountType: z.enum(['PERCENTAGE', 'FIXED']).optional(),
+  discountValue: z.number().positive('Discount value must be positive'),
+})
+
+export const volumeDiscountUpdateSchema = z.object({
+  id: z.string().uuid('Invalid volume discount ID'),
+  name: z.string().min(1).max(255).optional(),
+  description: z.string().max(1000).optional(),
+  minQuantity: z.number().int().positive().optional(),
+  discountType: z.enum(['PERCENTAGE', 'FIXED']).optional(),
+  discountValue: z.number().positive().optional(),
+})
+
+export const lotSchema = z.object({
+  productId: z.string().uuid('Invalid product ID'),
+  batchNumber: z.string().min(1, 'Batch number is required').max(50),
+  expiryDate: z.string().optional().refine(
+    (val) => !val || !isNaN(Date.parse(val)),
+    { message: 'Invalid date format' }
+  ),
+  quantity: z.number().int().positive('Quantity must be a positive integer'),
+  purchasePrice: z.number().min(0).optional(),
+  landedCost: z.number().min(0).optional(),
+  coaUrl: z.string().url().max(500).optional().or(z.literal('')),
+  coaNotes: z.string().max(1000).optional(),
 })
 
 export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): { success: true; data: T } | { success: false; errors: z.ZodError } {

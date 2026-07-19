@@ -114,7 +114,7 @@ export async function POST(request: Request) {
         select: { id: true },
       })
       if (!product) {
-        return NextResponse.json({ error: `Product not found: ${item.productId}` }, { status: 404 })
+        return NextResponse.json({ error: 'One or more products not found' }, { status: 404 })
       }
     }
 

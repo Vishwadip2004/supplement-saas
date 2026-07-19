@@ -23,6 +23,14 @@ interface ProductFormData {
   storageLocation: string
 }
 
+interface CategoryItem {
+  id: string
+  name: string
+  emoji: string
+  color: string
+  sortOrder: number
+}
+
 const defaultFormData: ProductFormData = {
   name: '',
   sku: '',
@@ -130,6 +138,52 @@ function getFlavorPillColor(flavor: string): string {
 
 const ALL_CATEGORIES = Object.keys(CATEGORY_EMOJI)
 
+const CATEGORY_GRADIENT_MAP: Record<string, string> = {
+  blue: 'from-blue-500 to-blue-700',
+  green: 'from-green-500 to-green-700',
+  orange: 'from-orange-500 to-red-600',
+  purple: 'from-purple-500 to-purple-700',
+  teal: 'from-teal-500 to-teal-700',
+  amber: 'from-amber-500 to-amber-700',
+  red: 'from-red-500 to-rose-700',
+  yellow: 'from-yellow-500 to-yellow-700',
+  sky: 'from-sky-500 to-sky-700',
+  stone: 'from-stone-500 to-stone-700',
+  lime: 'from-lime-500 to-lime-700',
+  pink: 'from-pink-500 to-pink-700',
+  indigo: 'from-indigo-500 to-indigo-700',
+  slate: 'from-slate-500 to-slate-700',
+  cyan: 'from-cyan-500 to-cyan-700',
+  emerald: 'from-emerald-500 to-emerald-700',
+  violet: 'from-violet-500 to-violet-700',
+  fuchsia: 'from-fuchsia-500 to-fuchsia-700',
+  rose: 'from-rose-400 to-rose-600',
+  gray: 'from-gray-500 to-gray-700',
+}
+
+const CATEGORY_PILL_MAP: Record<string, string> = {
+  blue: 'bg-blue-100 text-blue-800',
+  green: 'bg-green-100 text-green-800',
+  orange: 'bg-orange-100 text-orange-800',
+  purple: 'bg-purple-100 text-purple-800',
+  teal: 'bg-teal-100 text-teal-800',
+  amber: 'bg-amber-100 text-amber-800',
+  red: 'bg-red-100 text-red-800',
+  yellow: 'bg-yellow-100 text-yellow-800',
+  sky: 'bg-sky-100 text-sky-800',
+  stone: 'bg-stone-100 text-stone-800',
+  lime: 'bg-lime-100 text-lime-800',
+  pink: 'bg-pink-100 text-pink-800',
+  indigo: 'bg-indigo-100 text-indigo-800',
+  slate: 'bg-slate-100 text-slate-800',
+  cyan: 'bg-cyan-100 text-cyan-800',
+  emerald: 'bg-emerald-100 text-emerald-800',
+  violet: 'bg-violet-100 text-violet-800',
+  fuchsia: 'bg-fuchsia-100 text-fuchsia-800',
+  rose: 'bg-rose-100 text-rose-800',
+  gray: 'bg-gray-100 text-gray-800',
+}
+
 export default function ProductsPage() {
   const { data: session } = useSession()
   const canManage = ['ADMIN', 'MANAGER'].includes(session?.user?.role || '')
@@ -156,6 +210,13 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState<ProductFormData>(defaultFormData)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
+
+  const [dbCategories, setDbCategories] = useState<CategoryItem[]>([])
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryEmoji, setNewCategoryEmoji] = useState('📦')
+  const [categoryError, setCategoryError] = useState('')
+  const [categorySuccess, setCategorySuccess] = useState('')
 
   const loadProducts = useCallback(async (
     pageNum: number = 1,
@@ -216,6 +277,21 @@ export default function ProductsPage() {
     }
     run()
   }, [view, page, activeSearch, selectedCategory, brandFilter, loadProducts])
+
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const res = await fetch('/api/categories')
+        if (res.ok) {
+          const data = await res.json()
+          setDbCategories(data)
+        }
+      } catch {
+        // silently fail
+      }
+    }
+    fetchCategories()
+  }, [])
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -392,6 +468,61 @@ export default function ProductsPage() {
     setFormErrors({})
   }
 
+  const handleCreateCategory = async () => {
+    setCategoryError('')
+    setCategorySuccess('')
+    if (!newCategoryName.trim()) {
+      setCategoryError('Category name is required')
+      return
+    }
+    try {
+      const res = await csrfFetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCategoryName.trim(),
+          emoji: newCategoryEmoji,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to create category')
+      }
+      const created = await res.json()
+      setDbCategories(prev => [...prev, created])
+      setFormData(prev => ({ ...prev, category: created.name }))
+      setNewCategoryName('')
+      setNewCategoryEmoji('📦')
+      setCategorySuccess(`Category "${created.name}" created!`)
+      setTimeout(() => {
+        setShowCategoryModal(false)
+        setCategorySuccess('')
+      }, 800)
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : 'Failed to create category')
+    }
+  }
+
+  const getEmoji = (cat: string): string => {
+    const dbCat = dbCategories.find(c => c.name === cat)
+    if (dbCat) return dbCat.emoji
+    return CATEGORY_EMOJI[cat] || '📦'
+  }
+
+  const getGradient = (cat: string): string => {
+    const dbCat = dbCategories.find(c => c.name === cat)
+    if (dbCat) return CATEGORY_GRADIENT_MAP[dbCat.color] || 'from-gray-500 to-gray-700'
+    return CATEGORY_COLORS[cat] || 'from-gray-500 to-gray-700'
+  }
+
+  const getPillColor = (cat: string): string => {
+    const dbCat = dbCategories.find(c => c.name === cat)
+    if (dbCat) return CATEGORY_PILL_MAP[dbCat.color] || 'bg-gray-100 text-gray-800'
+    return CATEGORY_PILL_COLORS[cat] || 'bg-gray-100 text-gray-800'
+  }
+
+  const allCategoryNames = [...new Set([...ALL_CATEGORIES, ...dbCategories.map(c => c.name)])]
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
@@ -451,9 +582,9 @@ export default function ProductsPage() {
 
           {/* Category Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-            {ALL_CATEGORIES.map((cat) => {
-              const emoji = CATEGORY_EMOJI[cat] || '📦'
-              const gradient = CATEGORY_COLORS[cat] || 'from-gray-500 to-gray-700'
+            {allCategoryNames.map((cat) => {
+              const emoji = getEmoji(cat)
+              const gradient = getGradient(cat)
               const count = categoryCounts[cat] || 0
 
               return (
@@ -470,6 +601,22 @@ export default function ProductsPage() {
                 </button>
               )
             })}
+
+            {/* Add Custom Category Button */}
+            {canManage && (
+              <button
+                onClick={() => setShowCategoryModal(true)}
+                className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-left hover:border-indigo-400 hover:bg-indigo-50 transition-all duration-200 cursor-pointer group flex flex-col items-center justify-center min-h-[140px]"
+              >
+                <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-indigo-100 flex items-center justify-center mb-3 transition-colors">
+                  <svg className="w-6 h-6 text-gray-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </div>
+                <h3 className="font-semibold text-sm text-gray-500 group-hover:text-indigo-600 transition-colors">Add Category</h3>
+                <p className="text-xs text-gray-400 mt-1 group-hover:text-indigo-400">Create custom category</p>
+              </button>
+            )}
           </div>
 
           {/* All Products Button */}
@@ -630,7 +777,7 @@ export default function ProductsPage() {
                       )}
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                          CATEGORY_PILL_COLORS[product.category] || 'bg-gray-100 text-gray-800'
+                          getPillColor(product.category)
                         }`}
                       >
                         {product.category}
@@ -795,21 +942,31 @@ export default function ProductsPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Category *</label>
-                    <select
-                      name="category"
-                      value={formData.category}
-                      onChange={handleChange}
-                      className={`mt-1 block w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
-                        formErrors.category ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    >
-                      <option value="">Select category</option>
-                      {ALL_CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {CATEGORY_EMOJI[cat]} {cat}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex gap-2">
+                      <select
+                        name="category"
+                        value={formData.category}
+                        onChange={handleChange}
+                        className={`mt-1 block w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${
+                          formErrors.category ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="">Select category</option>
+                        {allCategoryNames.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {getEmoji(cat)} {cat}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowCategoryModal(true)}
+                        className="mt-1 px-3 py-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium whitespace-nowrap"
+                        title="Create new category"
+                      >
+                        + New
+                      </button>
+                    </div>
                     {formErrors.category && <p className="mt-1 text-sm text-red-600">{formErrors.category}</p>}
                   </div>
 
@@ -995,6 +1152,89 @@ export default function ProductsPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ CREATE CATEGORY MODAL ============ */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+            onClick={() => { setShowCategoryModal(false); setCategoryError(''); setCategorySuccess('') }}
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full">
+              <div className="flex items-center justify-between p-6 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Create New Category</h3>
+                <button
+                  onClick={() => { setShowCategoryModal(false); setCategoryError(''); setCategorySuccess('') }}
+                  className="text-gray-400 hover:text-gray-500 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {categoryError && (
+                  <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+                    {categoryError}
+                  </div>
+                )}
+                {categorySuccess && (
+                  <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-lg text-sm">
+                    {categorySuccess}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category Name *</label>
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="e.g. Energy Drinks"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Emoji</label>
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">{newCategoryEmoji}</span>
+                    <input
+                      type="text"
+                      value={newCategoryEmoji}
+                      onChange={(e) => setNewCategoryEmoji(e.target.value || '📦')}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-center text-2xl"
+                      maxLength={4}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">Type an emoji or pick one from your keyboard</p>
+                </div>
+
+                <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => { setShowCategoryModal(false); setCategoryError(''); setCategorySuccess('') }}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCreateCategory}
+                    disabled={!newCategoryName.trim()}
+                    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Create Category
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -35,14 +35,6 @@ src/
 └── utils/        # Helper functions
 ```
 
-## Default Login
-
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@supplementshop.com | Admin123!@#$ |
-| Manager | manager@supplementshop.com | Staff123!@#$ |
-| Staff | staff@supplementshop.com | Staff123!@#$ |
-
 ## Running the Project
 ```bash
 npm run dev      # Start dev server

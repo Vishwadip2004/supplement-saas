@@ -9,6 +9,25 @@ import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
 
+async function getGstSettings() {
+  const keys = ['businessState', 'stateCode', 'invoicePrefix', 'invoiceNextNumber', 'defaultGstRate']
+  const configs = await prisma.systemConfig.findMany({ where: { key: { in: keys } } })
+  const settings: Record<string, string> = {}
+  for (const c of configs) settings[c.key] = c.value
+  return settings
+}
+
+function calculateGst(totalAmount: number, gstRate: number, isInterState: boolean) {
+  const divisor = 1 + gstRate / 100
+  const taxable = totalAmount / divisor
+  const tax = totalAmount - taxable
+  if (isInterState) {
+    return { taxable, cgst: 0, sgst: 0, igst: Math.round(tax * 100) / 100, totalTax: Math.round(tax * 100) / 100 }
+  }
+  const halfTax = tax / 2
+  return { taxable, cgst: Math.round(halfTax * 100) / 100, sgst: Math.round(halfTax * 100) / 100, igst: 0, totalTax: Math.round(tax * 100) / 100 }
+}
+
 export async function GET(request: Request) {
   const ip = getClientIp(request)
 
@@ -169,6 +188,29 @@ export async function POST(request: Request) {
             throw new Error(`INSUFFICIENT_STOCK:${product.quantity}:${product.name}`)
           }
 
+          let lotNumber: string | null = null
+          let saleExpiryDate: Date | null = null
+          let remainingQty = qty
+
+          const lots = await tx.lot.findMany({
+            where: { productId: item.productId, tenantId, quantity: { gt: 0 } },
+            orderBy: { expiryDate: 'asc' },
+          })
+
+          for (const lot of lots) {
+            if (remainingQty <= 0) break
+            const deductFromLot = Math.min(lot.quantity, remainingQty)
+            await tx.lot.update({
+              where: { id: lot.id },
+              data: { quantity: { decrement: deductFromLot } },
+            })
+            remainingQty -= deductFromLot
+            if (!lotNumber) {
+              lotNumber = lot.batchNumber
+              saleExpiryDate = lot.expiryDate
+            }
+          }
+
           const safeDiscount = Math.min(item.discount || 0, unitPrice * qty)
           const totalAmount = Math.max(0, (unitPrice * qty) - safeDiscount)
 
@@ -182,6 +224,8 @@ export async function POST(request: Request) {
                 totalAmount,
                 customerId: customerId || null,
                 paymentMethod,
+                lotNumber,
+                expiryDate: saleExpiryDate,
                 tenantId,
               },
             }),
@@ -195,6 +239,7 @@ export async function POST(request: Request) {
                 quantity: -qty,
                 type: 'OUT',
                 reference: 'Sale',
+                lotNumber,
                 tenantId,
               },
             }),
@@ -216,6 +261,29 @@ export async function POST(request: Request) {
           throw new Error(`INSUFFICIENT_STOCK:${product.quantity}:${product.name}`)
         }
 
+        let lotNumber: string | null = null
+        let saleExpiryDate: Date | null = null
+        let remainingQty = quantity
+
+        const lots = await tx.lot.findMany({
+          where: { productId, tenantId, quantity: { gt: 0 } },
+          orderBy: { expiryDate: 'asc' },
+        })
+
+        for (const lot of lots) {
+          if (remainingQty <= 0) break
+          const deductFromLot = Math.min(lot.quantity, remainingQty)
+          await tx.lot.update({
+            where: { id: lot.id },
+            data: { quantity: { decrement: deductFromLot } },
+          })
+          remainingQty -= deductFromLot
+          if (!lotNumber) {
+            lotNumber = lot.batchNumber
+            saleExpiryDate = lot.expiryDate
+          }
+        }
+
         const unitPrice = Number(product.sellingPrice)
         const safeDiscount = Math.min(discount || 0, unitPrice * quantity)
         const totalAmount = Math.max(0, (unitPrice * quantity) - safeDiscount)
@@ -230,6 +298,8 @@ export async function POST(request: Request) {
               totalAmount,
               customerId: customerId || null,
               paymentMethod,
+              lotNumber,
+              expiryDate: saleExpiryDate,
               tenantId,
             },
           }),
@@ -243,6 +313,7 @@ export async function POST(request: Request) {
               quantity: -quantity,
               type: 'OUT',
               reference: 'Sale',
+              lotNumber,
               tenantId,
             },
           }),
@@ -255,7 +326,7 @@ export async function POST(request: Request) {
           'sale',
           saleRecord.id,
           'CREATE',
-          { productId, product: product.name, sku: product.sku, quantity, totalAmount: saleRecord.totalAmount }
+          { productId, product: product.name, sku: product.sku, quantity, totalAmount: saleRecord.totalAmount, lotNumber }
         )
 
         return [saleRecord]
@@ -270,10 +341,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
     if (message.startsWith('INSUFFICIENT_STOCK:')) {
-      const parts = message.split(':')
-      const available = parts[1]
-      const productName = parts[2] || 'product'
-      return NextResponse.json({ error: `Insufficient stock for ${productName}. Available: ${available}` }, { status: 400 })
+      return NextResponse.json({ error: 'Insufficient stock for this product' }, { status: 400 })
     }
     console.error('Failed to create sale:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

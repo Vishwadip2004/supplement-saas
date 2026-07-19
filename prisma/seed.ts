@@ -416,24 +416,32 @@ async function main() {
   console.log('Created', createdProducts.length, 'products')
 
   const createdCustomers = []
-  for (const customer of customers) {
-    const c = await prisma.customer.create({
-      data: { ...customer, tenantId: tenant.id },
-    })
-    createdCustomers.push(c)
+  const existingCustomerCount = await prisma.customer.count({ where: { tenantId: tenant.id } })
+  if (existingCustomerCount < 8) {
+    for (const customer of customers) {
+      const c = await prisma.customer.create({
+        data: { ...customer, tenantId: tenant.id },
+      })
+      createdCustomers.push(c)
+    }
+    console.log('Created', createdCustomers.length, 'customers')
+  } else {
+    console.log('Customers already exist, skipping')
   }
-
-  console.log('Created', createdCustomers.length, 'customers')
 
   const createdSuppliers = []
-  for (const supplier of suppliers) {
-    const s = await prisma.supplier.create({
-      data: { ...supplier, tenantId: tenant.id },
-    })
-    createdSuppliers.push(s)
+  const existingSupplierCount = await prisma.supplier.count({ where: { tenantId: tenant.id } })
+  if (existingSupplierCount < 4) {
+    for (const supplier of suppliers) {
+      const s = await prisma.supplier.create({
+        data: { ...supplier, tenantId: tenant.id },
+      })
+      createdSuppliers.push(s)
+    }
+    console.log('Created', createdSuppliers.length, 'suppliers')
+  } else {
+    console.log('Suppliers already exist, skipping')
   }
-
-  console.log('Created', createdSuppliers.length, 'suppliers')
 
   const paymentMethods = [PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.TRANSFER]
   const existingSales = await prisma.sale.count({ where: { tenantId: tenant.id } })

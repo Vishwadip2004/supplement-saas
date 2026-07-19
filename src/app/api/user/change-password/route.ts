@@ -97,18 +97,15 @@ export async function POST(request: Request) {
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 14)
 
-    const isNewPasswordUsed = await checkPasswordHistory(prisma, user.id, newPassword)
-    if (!isNewPasswordUsed) {
-      return NextResponse.json(
-        { error: 'New password was recently used. Please choose a different password.' },
-        { status: 400 }
-      )
-    }
-
     await prisma.$transaction(async (tx) => {
+      const isNewPasswordUsed = await checkPasswordHistory(tx, user.id, newPassword)
+      if (!isNewPasswordUsed) {
+        throw new Error('PASSWORD_REUSE')
+      }
+
       await tx.user.update({
         where: { id: user.id },
-        data: { password: hashedNewPassword },
+        data: { password: hashedNewPassword, tokenVersion: { increment: 1 } },
       })
 
       await addPasswordToHistory(tx, user.id, hashedNewPassword)
@@ -133,6 +130,13 @@ export async function POST(request: Request) {
     )
   } catch (error) {
     console.error('Password change failed:', error)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    if (message === 'PASSWORD_REUSE') {
+      return NextResponse.json(
+        { error: 'New password was recently used. Please choose a different password.' },
+        { status: 400 }
+      )
+    }
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

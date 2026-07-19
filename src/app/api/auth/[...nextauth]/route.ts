@@ -129,6 +129,7 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           role: user.role,
           tenantId: user.tenantId,
+          tokenVersion: (user as Record<string, unknown>).tokenVersion ?? 0,
         }
       },
     }),
@@ -140,10 +141,11 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        const u = user as { role: string; id: string; tenantId: string }
+        const u = user as { role: string; id: string; tenantId: string; tokenVersion: number }
         token.role = u.role
         token.id = u.id
         token.tenantId = u.tenantId
+        token.tokenVersion = u.tokenVersion
         token.iat = Math.floor(Date.now() / 1000)
       }
 
@@ -153,11 +155,17 @@ export const authOptions: NextAuthOptions = {
           try {
             const dbUser = await prisma.user.findUnique({
               where: { id: token.id as string },
-              select: { role: true, isActive: true },
+              select: { role: true, isActive: true, tokenVersion: true, mfaEnabled: true },
             })
             if (dbUser) {
               token.role = dbUser.role
               if (!dbUser.isActive) {
+                token.exp = 0
+              }
+              if ((token.tokenVersion as number || 0) !== dbUser.tokenVersion) {
+                token.exp = 0
+              }
+              if (token.mfaEnabled !== dbUser.mfaEnabled) {
                 token.exp = 0
               }
             }

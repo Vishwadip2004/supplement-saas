@@ -46,11 +46,12 @@ export async function POST(request: Request) {
       await auditLogger.logAuth(
         null,
         user?.tenantId || 'unknown',
-        user?.id || email,
+        user?.id || 'unknown',
         'PASSWORD_RESET_REQUESTED',
         'success',
         ip
       )
+      await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200))
       return NextResponse.json({ message: 'If the email exists, a reset link has been sent' })
     }
 

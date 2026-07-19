@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     )
   }
 
-  if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
+  if (!['ADMIN', 'MANAGER', 'STAFF'].includes(session.user.role)) {
     return NextResponse.json(
       { error: 'Forbidden' },
       { status: 403 }

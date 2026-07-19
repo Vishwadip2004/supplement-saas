@@ -64,16 +64,10 @@ export default function PurchaseOrdersPage() {
     let cancelled = false
     async function init() {
       try {
-        const [ordersRes, suppliersRes, productsRes] = await Promise.all([
-          fetch('/api/purchase-orders?limit=20'),
+        const [suppliersRes, productsRes] = await Promise.all([
           fetch('/api/suppliers?limit=100'),
           fetch('/api/products?limit=100'),
         ])
-        if (ordersRes.ok && !cancelled) {
-          const data = await ordersRes.json()
-          setOrders(data.data)
-          setPagination(data.pagination)
-        }
         if (suppliersRes.ok && !cancelled) {
           const data = await suppliersRes.json()
           setSuppliers(data.data)
@@ -82,39 +76,25 @@ export default function PurchaseOrdersPage() {
           const data = await productsRes.json()
           setProducts(data.data)
         }
-      } catch {
-        if (!cancelled) setError('Failed to load data')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    init()
-    return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    async function fetchOrders() {
-      try {
         setLoading(true)
         setError('')
         const params = new URLSearchParams({ page: '1', limit: '20' })
         if (statusFilter) params.set('status', statusFilter)
-        const res = await fetch(`/api/purchase-orders?${params}`)
-        if (!res.ok) throw new Error('Failed to fetch purchase orders')
-        const data = await res.json()
+        const ordersRes = await fetch(`/api/purchase-orders?${params}`)
         if (!cancelled) {
+          if (!ordersRes.ok) throw new Error('Failed to fetch purchase orders')
+          const data = await ordersRes.json()
           setOrders(data.data)
           setPagination(data.pagination)
           setPage(1)
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch purchase orders')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load data')
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
-    fetchOrders()
+    init()
     return () => { cancelled = true }
   }, [statusFilter])
 
@@ -245,7 +225,7 @@ export default function PurchaseOrdersPage() {
                   <td className="px-6 py-4 text-sm font-mono text-gray-900">{order.id.slice(0, 8)}...</td>
                   <td className="px-6 py-4 text-sm text-gray-900">{order.supplier.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{order.items.length} items</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">${Number(order.totalAmount).toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">₹{Number(order.totalAmount).toFixed(2)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColors[order.status] || 'bg-gray-100'}`}>
                       {order.status}
@@ -352,7 +332,7 @@ export default function PurchaseOrdersPage() {
                       </div>
                     ))}
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">Total: ${totalAmount.toFixed(2)}</p>
+                  <p className="mt-2 text-sm text-gray-600">Total: ₹{totalAmount.toFixed(2)}</p>
                 </div>
               </div>
 

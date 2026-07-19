@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { verifyTOTP } from '@/lib/mfa'
 import { getEncryption } from '@/lib/security/encryption'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { auditLogger } from '@/lib/security/audit'
+import { extractTenantId } from '@/lib/tenant'
 import { z } from 'zod'
 import { validateCsrfRequest } from '@/lib/csrf'
 
 const loginMfaSchema = z.object({
-  userId: z.string().uuid(),
   code: z.string().length(6, 'Code must be 6 digits'),
 })
 
@@ -17,9 +19,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
   }
 
+  const session = await getServerSession(authOptions)
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const ip = getClientIp(request)
 
-  if (!(await checkRateLimit(`mfa:${ip}`, 5, 15 * 60 * 1000))) {
+  if (!(await checkRateLimit(`mfa:${session.user.id}`, 5, 15 * 60 * 1000))) {
     return NextResponse.json(
       { error: 'Too many attempts. Please try again later.' },
       { status: 429 }
@@ -37,15 +44,16 @@ export async function POST(request: Request) {
       )
     }
 
-    const { userId, code } = validation.data
+    const { code } = validation.data
+    const tenantId = extractTenantId(session)
 
     const user = await prisma.user.findFirst({
-      where: { id: userId },
-      select: { id: true, tenantId: true, email: true, mfaEnabled: true, mfaSecret: true, isActive: true },
+      where: { id: session.user.id, tenantId },
+      select: { id: true, tenantId: true, mfaEnabled: true, mfaSecret: true, isActive: true },
     })
 
     if (!user || !user.isActive || !user.mfaEnabled || !user.mfaSecret) {
-      return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
+      return NextResponse.json({ error: 'MFA is not enabled for this account' }, { status: 400 })
     }
 
     const encryption = await getEncryption()

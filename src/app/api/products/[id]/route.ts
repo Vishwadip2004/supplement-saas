@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
-import { productSchema, validateInput } from '@/lib/security/validation'
+import { productUpdateSchema, validateInput } from '@/lib/security/validation'
 import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
@@ -119,7 +119,7 @@ export async function PUT(
         { status: 400 }
       )
     }
-    const validation = validateInput(productSchema, body)
+    const validation = validateInput(productUpdateSchema, body)
     
     if (!validation.success) {
       const details = process.env.NODE_ENV === 'production'

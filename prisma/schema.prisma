@@ -16,6 +16,7 @@ enum PaymentMethod {
   CASH
   CARD
   TRANSFER
+  UPI
   OTHER
 }
 
@@ -38,6 +39,12 @@ enum PurchaseOrderStatus {
   CANCELLED
 }
 
+enum RecallStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
 model Tenant {
   id            String    @id @default(uuid())
   name          String
@@ -55,8 +62,31 @@ model Tenant {
   stockMovements StockMovement[]
   purchaseOrders PurchaseOrder[]
   auditLogs     AuditLog[]
+  bundles       Bundle[]
+  volumeDiscounts VolumeDiscount[]
+  recalls       Recall[]
+  lots          Lot[]
+  categories    Category[]
 
   @@map("tenants")
+}
+
+model Category {
+  id            String    @id @default(uuid())
+  tenantId      String
+  name          String
+  emoji         String    @default("📦")
+  color         String    @default("gray")
+  sortOrder     Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("categories")
 }
 
 model User {
@@ -75,6 +105,7 @@ model User {
   passwordResetExpires DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  tokenVersion  Int       @default(0)
 
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   auditLogs     AuditLog[]
@@ -110,8 +141,11 @@ model Product {
   flavor        String?
   purchasePrice Decimal   @db.Decimal(10, 2)
   sellingPrice  Decimal   @db.Decimal(10, 2)
+  hsnCode       String?
+  gstRate       Decimal   @default(18) @db.Decimal(5, 2)
   quantity      Int       @default(0)
   minStock      Int       @default(10)
+  reorderLevel  Int?
   expiryDate    DateTime?
   batchNumber   String?
   storageLocation String?
@@ -123,6 +157,9 @@ model Product {
   sales         Sale[]
   stockMovements StockMovement[]
   purchaseOrderItems PurchaseOrderItem[]
+  bundleItems   BundleItem[]
+  bundleComponents BundleComponent[]
+  lots          Lot[]
 
   @@unique([tenantId, sku])
   @@index([tenantId])
@@ -136,6 +173,8 @@ model Customer {
   email         String?
   phone         String?
   address       String?
+  gstin         String?
+  state         String?
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -156,6 +195,11 @@ model Supplier {
   phone         String?
   address       String?
   notes         String?
+  leadTimeDays  Int?
+  qualityRating Decimal?  @db.Decimal(3, 2)
+  onTimeRate    Decimal?  @db.Decimal(5, 2)
+  totalOrders   Int       @default(0)
+  onTimeOrders  Int       @default(0)
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -172,19 +216,27 @@ model Sale {
   tenantId      String
   productId     String
   customerId    String?
+  invoiceNumber String?
   quantity      Int
   unitPrice     Decimal   @db.Decimal(10, 2)
   discount      Decimal   @default(0) @db.Decimal(10, 2)
   totalAmount   Decimal   @db.Decimal(10, 2)
+  cgst          Decimal   @default(0) @db.Decimal(10, 2)
+  sgst          Decimal   @default(0) @db.Decimal(10, 2)
+  igst          Decimal   @default(0) @db.Decimal(10, 2)
+  totalTax      Decimal   @default(0) @db.Decimal(10, 2)
   paymentMethod PaymentMethod
   notes         String?
+  lotNumber     String?
+  expiryDate    DateTime?
   createdAt     DateTime  @default(now())
 
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product       Product   @relation(fields: [productId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
   customer      Customer? @relation(fields: [customerId], references: [id])
 
   @@index([tenantId])
+  @@index([lotNumber])
   @@map("sales")
 }
 
@@ -196,12 +248,15 @@ model StockMovement {
   type          StockMovementType
   reference     String?
   notes         String?
+  lotNumber     String?
+  expiryDate    DateTime?
   createdAt     DateTime  @default(now())
 
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  product       Product   @relation(fields: [productId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
+  @@index([lotNumber])
   @@map("stock_movements")
 }
 
@@ -211,6 +266,7 @@ model PurchaseOrder {
   supplierId    String
   status        PurchaseOrderStatus @default(PENDING)
   totalAmount   Decimal   @db.Decimal(10, 2)
+  expectedDeliveryDate DateTime?
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -229,9 +285,12 @@ model PurchaseOrderItem {
   productId     String
   quantity      Int
   unitPrice     Decimal   @db.Decimal(10, 2)
+  landedCost    Decimal?  @db.Decimal(10, 2)
+  lotNumber     String?
+  expiryDate    DateTime?
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  product       Product   @relation(fields: [productId], references: [id])
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@map("purchase_order_items")
 }
@@ -279,4 +338,110 @@ model SystemConfig {
   updatedAt     DateTime  @updatedAt
 
   @@map("system_config")
+}
+
+model Bundle {
+  id            String    @id @default(uuid())
+  tenantId      String
+  name          String
+  description   String?
+  bundlePrice   Decimal   @db.Decimal(10, 2)
+  discount      Decimal   @default(0) @db.Decimal(10, 2)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items         BundleItem[]
+  components    BundleComponent[]
+
+  @@index([tenantId])
+  @@map("bundles")
+}
+
+model BundleItem {
+  id            String    @id @default(uuid())
+  bundleId      String
+  productId     String
+  quantity      Int       @default(1)
+
+  bundle        Bundle    @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [productId], references: [id])
+
+  @@map("bundle_items")
+}
+
+model BundleComponent {
+  id            String    @id @default(uuid())
+  bundleId      String
+  productId     String
+  quantity      Int       @default(1)
+
+  bundle        Bundle    @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [productId], references: [id])
+
+  @@map("bundle_components")
+}
+
+model VolumeDiscount {
+  id            String    @id @default(uuid())
+  tenantId      String
+  name          String
+  description   String?
+  minQuantity   Int
+  discountType  String    @default("PERCENTAGE")
+  discountValue Decimal   @db.Decimal(10, 2)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("volume_discounts")
+}
+
+model Recall {
+  id            String    @id @default(uuid())
+  tenantId      String
+  batchNumber   String
+  productName   String
+  reason        String
+  status        RecallStatus @default(ACTIVE)
+  affectedQuantity Int
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([batchNumber])
+  @@map("recalls")
+}
+
+model Lot {
+  id            String    @id @default(uuid())
+  tenantId      String
+  productId     String
+  batchNumber   String
+  expiryDate    DateTime?
+  quantity      Int       @default(0)
+  purchasePrice Decimal?  @db.Decimal(10, 2)
+  landedCost    Decimal?  @db.Decimal(10, 2)
+  coaUrl        String?
+  coaNotes      String?
+  receivedAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [productId], references: [id])
+
+  @@unique([tenantId, productId, batchNumber])
+  @@index([tenantId])
+  @@index([productId])
+  @@index([batchNumber])
+  @@index([expiryDate])
+  @@map("lots")
 }

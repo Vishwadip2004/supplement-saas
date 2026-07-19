@@ -10,4 +10,14 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - ENCRYPTION_SALT=${ENCRYPTION_SALT}
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
     restart: unless-stopped

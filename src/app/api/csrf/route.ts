@@ -13,7 +13,7 @@ export async function GET() {
 
   const response = NextResponse.json({ csrfToken: tokenHex })
   response.cookies.set('csrf-token', tokenHex, {
-    httpOnly: false,
+    httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',

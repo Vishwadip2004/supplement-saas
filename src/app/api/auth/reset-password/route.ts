@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import prisma from '@/lib/prisma'
 import { getEncryption } from '@/lib/security/encryption'
@@ -21,6 +22,15 @@ const resetPasswordSchema = z.object({
 })
 
 export async function GET(request: Request) {
+  const ip = getClientIp(request)
+
+  if (!(await checkRateLimit(`reset-password:${ip}`, 20, 60 * 60 * 1000))) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      { status: 429 }
+    )
+  }
+
   const url = new URL(request.url)
   const token = url.searchParams.get('token')
   const email = url.searchParams.get('email')
@@ -36,16 +46,16 @@ export async function GET(request: Request) {
     })
 
     if (!user || !user.passwordResetToken || !user.passwordResetExpires) {
-      return NextResponse.json({ error: 'Invalid reset link' }, { status: 400 })
+      return NextResponse.json({ message: 'If an account with that email exists, a reset link has been sent.' })
     }
 
     if (user.passwordResetExpires < new Date()) {
-      return NextResponse.json({ error: 'Reset link has expired' }, { status: 400 })
+      return NextResponse.json({ message: 'If an account with that email exists, a reset link has been sent.' })
     }
 
-    return NextResponse.json({ valid: true })
+    return NextResponse.json({ message: 'If an account with that email exists, a reset link has been sent.' })
   } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ message: 'If an account with that email exists, a reset link has been sent.' })
   }
 }
 
@@ -103,7 +113,10 @@ export async function POST(request: Request) {
 
     const encryption = await getEncryption()
     const tokenHash = encryption.hash(token)
-    if (tokenHash !== user.passwordResetToken) {
+    const storedHash = user.passwordResetToken || ''
+    const isValidToken = tokenHash.length === storedHash.length &&
+      crypto.timingSafeEqual(Buffer.from(tokenHash, 'utf-8'), Buffer.from(storedHash, 'utf-8'))
+    if (!isValidToken) {
       await auditLogger.logAuth(null, user.tenantId, user.id, 'PASSWORD_RESET_FAILED', 'failure', ip)
       return NextResponse.json({ error: 'Invalid reset token' }, { status: 400 })
     }
@@ -127,6 +140,7 @@ export async function POST(request: Request) {
           passwordResetExpires: null,
           failedLoginAttempts: 0,
           isActive: true,
+          tokenVersion: { increment: 1 },
         },
       })
       await tx.session.deleteMany({ where: { userId: user.id } })

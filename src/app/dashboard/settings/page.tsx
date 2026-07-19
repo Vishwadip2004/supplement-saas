@@ -1,9 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { csrfFetch } from '@/lib/csrf-client'
+import { useSession } from 'next-auth/react'
 
 export default function SecurityPage() {
+  const { data: session } = useSession()
+  const isAdmin = session?.user?.role === 'ADMIN'
+
   const [mfaEnabled, setMfaEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [qrCode, setQrCode] = useState('')
@@ -24,6 +29,12 @@ export default function SecurityPage() {
   const [passwordSuccess, setPasswordSuccess] = useState('')
   const [passwordError, setPasswordError] = useState('')
 
+  const [shopName, setShopName] = useState('')
+  const [shopNameLoading, setShopNameLoading] = useState(true)
+  const [savingShopName, setSavingShopName] = useState(false)
+  const [shopNameSuccess, setShopNameSuccess] = useState('')
+  const [shopNameError, setShopNameError] = useState('')
+
   useEffect(() => {
     let cancelled = false
     async function checkMfaStatus() {
@@ -42,6 +53,54 @@ export default function SecurityPage() {
     checkMfaStatus()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchShopName() {
+      try {
+        const res = await fetch('/api/shop-settings')
+        if (res.ok && !cancelled) {
+          const data = await res.json()
+          setShopName(data.shopName)
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setShopNameLoading(false)
+      }
+    }
+    fetchShopName()
+    return () => { cancelled = true }
+  }, [])
+
+  const handleSaveShopName = async () => {
+    setShopNameError('')
+    setShopNameSuccess('')
+    if (!shopName.trim()) {
+      setShopNameError('Shop name is required')
+      return
+    }
+    setSavingShopName(true)
+    try {
+      const res = await csrfFetch('/api/shop-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopName: shopName.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to save')
+      }
+      const data = await res.json()
+      setShopName(data.shopName)
+      setShopNameSuccess('Shop name updated! Refresh to see changes in sidebar.')
+      setTimeout(() => setShopNameSuccess(''), 3000)
+    } catch (err) {
+      setShopNameError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSavingShopName(false)
+    }
+  }
 
   const handleSetup = async () => {
     setError('')
@@ -160,13 +219,56 @@ export default function SecurityPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Security Settings</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Settings</h1>
 
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
       )}
       {success && (
         <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">{success}</div>
+      )}
+
+      {/* Shop Settings */}
+      {isAdmin && (
+        <div className="bg-white shadow rounded-lg p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Shop Settings</h2>
+          <p className="text-sm text-gray-500 mb-4">Customize how your shop appears in the application</p>
+
+          {shopNameError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{shopNameError}</div>
+          )}
+          {shopNameSuccess && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{shopNameSuccess}</div>
+          )}
+
+          {shopNameLoading ? (
+            <div className="text-sm text-gray-500">Loading...</div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Shop / App Name</label>
+                <div className="flex gap-3 mt-1">
+                  <input
+                    type="text"
+                    value={shopName}
+                    onChange={(e) => setShopName(e.target.value)}
+                    maxLength={50}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="e.g. My Supplement Shop"
+                  />
+                  <button
+                    onClick={handleSaveShopName}
+                    disabled={savingShopName || !shopName.trim()}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                  >
+                    {savingShopName ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">This name will appear in the sidebar and browser tab. Max 50 characters.</p>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="bg-white shadow rounded-lg p-6 mb-6">
@@ -250,7 +352,7 @@ export default function SecurityPage() {
             </p>
             <div className="flex justify-center mb-4">
               <div className="bg-white p-4 border rounded-lg">
-                <img src={qrCode} alt="MFA QR Code" width={192} height={192} />
+                <Image src={qrCode} alt="MFA QR Code" width={192} height={192} unoptimized />
               </div>
             </div>
             <p className="text-sm text-gray-600 mb-2">Or enter this secret manually:</p>

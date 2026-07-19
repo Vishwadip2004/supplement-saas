@@ -60,52 +60,30 @@ export default function StockPage() {
     let cancelled = false
     async function init() {
       try {
-        const [movRes, prodRes] = await Promise.all([
-          fetch('/api/stock-movements?limit=20'),
-          fetch('/api/products?limit=100'),
-        ])
-        if (movRes.ok && !cancelled) {
-          const data = await movRes.json()
-          setMovements(data.data)
-          setPagination(data.pagination)
-        }
+        const prodRes = await fetch('/api/products?limit=100')
         if (prodRes.ok && !cancelled) {
           const data = await prodRes.json()
           setProducts(data.data)
         }
-      } catch {
-        if (!cancelled) setError('Failed to load data')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    init()
-    return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    async function fetchMovements() {
-      try {
         setLoading(true)
         setError('')
         const params = new URLSearchParams({ page: '1', limit: '20' })
         if (typeFilter) params.set('type', typeFilter)
-        const res = await fetch(`/api/stock-movements?${params}`)
-        if (!res.ok) throw new Error('Failed to fetch stock movements')
-        const data = await res.json()
+        const movRes = await fetch(`/api/stock-movements?${params}`)
         if (!cancelled) {
+          if (!movRes.ok) throw new Error('Failed to fetch stock movements')
+          const data = await movRes.json()
           setMovements(data.data)
           setPagination(data.pagination)
           setPage(1)
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to fetch stock movements')
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load data')
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
-    fetchMovements()
+    init()
     return () => { cancelled = true }
   }, [typeFilter])
 

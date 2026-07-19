@@ -48,13 +48,9 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Default Login
+### First Login
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@supplementshop.com | Admin123!@#$ |
-| Manager | manager@supplementshop.com | Staff123!@#$ |
-| Staff | staff@supplementshop.com | Staff123!@#$ |
+After seeding, use the credentials you set during registration. The seeder creates an admin account — check the seed script output for the email and password.
 
 ## Project Structure
 
