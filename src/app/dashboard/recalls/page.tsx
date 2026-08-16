@@ -20,7 +20,6 @@ interface RecallSale {
   totalAmount: number
   createdAt: string
   product: { name: string; sku: string }
-  customer: { name: string; email: string; phone: string } | null
 }
 
 export default function RecallsPage() {
@@ -57,6 +56,18 @@ export default function RecallsPage() {
     load()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [error])
 
   const loadRecalls = async () => {
     try {
@@ -121,12 +132,30 @@ export default function RecallsPage() {
 
   const activeRecalls = recalls.filter(r => r.status === 'ACTIVE')
 
+  const handleDelete = async (id: string, batchNumber: string) => {
+    if (!window.confirm(`Delete recall for batch "${batchNumber}"?`)) return
+    setError('')
+    setSuccess('')
+    try {
+      const res = await csrfFetch(`/api/recalls/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to delete recall')
+      }
+      setSuccess('Recall deleted')
+      loadRecalls()
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete recall')
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Recall Management</h1>
-          <p className="text-sm text-gray-500 mt-1">Isolate affected batches and track affected customers</p>
+          <p className="text-sm text-gray-500 mt-1">Isolate affected batches and review affected sales</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -208,12 +237,20 @@ export default function RecallsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <button
-                          onClick={() => viewRecallDetail(recall)}
-                          className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-                        >
-                          View Customers
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => viewRecallDetail(recall)}
+                            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                          >
+                            View Details
+                          </button>
+                          <button
+                            onClick={() => handleDelete(recall.id, recall.batchNumber)}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -256,8 +293,6 @@ export default function RecallsPage() {
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
                           <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
                         </tr>
@@ -268,14 +303,8 @@ export default function RecallsPage() {
                             <td className="px-4 py-2 text-sm text-gray-900">
                               {new Date(sale.createdAt).toLocaleDateString()}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-900">
-                              {sale.customer?.name || 'Walk-in'}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-500">
-                              {sale.customer?.email || sale.customer?.phone || '-'}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-right">{sale.quantity}</td>
-                            <td className="px-4 py-2 text-sm text-right font-medium">
+                            <td className="px-4 py-2 text-sm text-right text-gray-900">{sale.quantity}</td>
+                            <td className="px-4 py-2 text-sm text-right font-medium text-gray-900">
                               ₹{Number(sale.totalAmount).toFixed(2)}
                             </td>
                           </tr>

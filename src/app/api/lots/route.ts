@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { lotSchema, validateInput } from '@/lib/security/validation'
+import { auditLogger } from '@/lib/security/audit'
 import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
@@ -19,7 +20,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { searchParams } = new URL(request.url)
@@ -86,7 +92,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     let body: unknown
@@ -111,14 +122,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 })
     }
 
-    const lot = await prisma.$transaction(async (tx) => {
-      const existingLot = await tx.lot.findUnique({
-        where: { tenantId_productId_batchNumber: { tenantId, productId, batchNumber } },
-      })
+    const existingLot = await prisma.lot.findUnique({
+      where: { tenantId_productId_batchNumber: { tenantId, productId, batchNumber } },
+    })
 
-      let lotRecord
-      if (existingLot) {
-        lotRecord = await tx.lot.update({
+    let lotRecord
+    if (existingLot) {
+      const [updated] = await prisma.$transaction([
+        prisma.lot.update({
           where: { id: existingLot.id },
           data: {
             quantity: { increment: quantity },
@@ -128,9 +139,16 @@ export async function POST(request: Request) {
             coaUrl: coaUrl || existingLot.coaUrl,
             coaNotes: coaNotes || existingLot.coaNotes,
           },
-        })
-      } else {
-        lotRecord = await tx.lot.create({
+        }),
+        prisma.product.update({
+          where: { id: productId, tenantId },
+          data: { quantity: { increment: quantity } },
+        }),
+      ])
+      lotRecord = updated
+    } else {
+      const [created] = await prisma.$transaction([
+        prisma.lot.create({
           data: {
             productId,
             batchNumber,
@@ -142,28 +160,26 @@ export async function POST(request: Request) {
             coaNotes: coaNotes || null,
             tenantId,
           },
-        })
-      }
+        }),
+        prisma.product.update({
+          where: { id: productId, tenantId },
+          data: { quantity: { increment: quantity } },
+        }),
+      ])
+      lotRecord = created
+    }
 
-      await tx.stockMovement.create({
-        data: {
-          productId,
-          quantity,
-          type: 'IN',
-          reference: `Lot received: ${batchNumber}`,
-          lotNumber: batchNumber,
-          expiryDate: expiryDate ? new Date(expiryDate) : null,
-          tenantId,
-        },
-      })
+    const lot = lotRecord
 
-      await tx.product.update({
-        where: { id: productId, tenantId },
-        data: { quantity: { increment: quantity } },
-      })
-
-      return lotRecord
-    })
+    await auditLogger.logDataChange(
+      null,
+      tenantId,
+      session.user.id,
+      'lot',
+      lot.id,
+      existingLot ? 'UPDATE' : 'CREATE',
+      { batchNumber, productId, quantity, productName: product.name }
+    )
 
     const response = NextResponse.json(lot, { status: 201 })
     return setCorsHeaders(response, request.headers.get('origin'))

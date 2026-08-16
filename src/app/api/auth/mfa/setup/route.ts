@@ -6,8 +6,14 @@ import { createTOTPSecret, getTOTPUri, generateQRCodeDataUri } from '@/lib/mfa'
 import { extractTenantId } from '@/lib/tenant'
 import { getEncryption } from '@/lib/security/encryption'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 
 export async function POST(request: Request) {
+  const ip = getClientIp(request)
+  if (!(await checkRateLimit(ip))) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  }
+
   if (!validateCsrfRequest(request)) {
     return NextResponse.json({ error: 'Invalid CSRF token' }, { status: 403 })
   }
@@ -18,7 +24,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const user = await prisma.user.findFirst({

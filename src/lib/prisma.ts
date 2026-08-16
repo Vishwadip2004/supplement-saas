@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client'
-import { PrismaPg } from '@prisma/adapter-pg'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -11,11 +10,33 @@ function getPrisma(): PrismaClient {
     if (!databaseUrl) {
       throw new Error('DATABASE_URL environment variable is not set')
     }
-    const adapter = new PrismaPg({ connectionString: databaseUrl })
-    globalForPrisma.prisma = new PrismaClient({
-      adapter,
-      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-    })
+
+    const isNeon = databaseUrl.includes('neon.tech')
+
+    if (isNeon) {
+      // Use PrismaPg (TCP) which supports interactive transactions.
+      // PrismaNeonHttp does NOT support transactions.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { PrismaPg } = require('@prisma/adapter-pg')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Pool } = require('pg')
+      const pool = new Pool({
+        connectionString: databaseUrl,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 30000,
+        idleTimeoutMillis: 30000,
+        max: 5,
+      })
+      const adapter = new PrismaPg(pool)
+      globalForPrisma.prisma = new PrismaClient({
+        adapter,
+        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      })
+    } else {
+      globalForPrisma.prisma = new PrismaClient({
+        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      })
+    }
   }
   return globalForPrisma.prisma
 }

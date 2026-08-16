@@ -7,6 +7,12 @@ import prisma from '@/lib/prisma'
 import { auditLogger } from '@/lib/security/audit'
 import { validateCsrfRequest } from '@/lib/csrf'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
+import { z } from 'zod'
+
+const switchRoleSchema = z.object({
+  targetRole: z.enum(['ADMIN', 'MANAGER', 'STAFF']),
+  password: z.string().optional(),
+})
 
 export async function POST(request: Request) {
   if (!validateCsrfRequest(request)) {
@@ -24,12 +30,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json()
-    const { targetRole, password } = body
-
-    if (!targetRole || !['ADMIN', 'MANAGER', 'STAFF'].includes(targetRole)) {
-      return NextResponse.json({ error: 'Invalid target role' }, { status: 400 })
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
+
+    const validation = switchRoleSchema.safeParse(body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Validation failed', details: validation.error.format() }, { status: 400 })
+    }
+
+    const { targetRole, password } = validation.data
 
     const currentRole = session.user.role
 
@@ -64,6 +77,11 @@ export async function POST(request: Request) {
 
     if (!dbUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Verify the user actually has the target role in the database
+    if (dbUser.role !== targetRole && targetRole !== 'STAFF') {
+      return NextResponse.json({ error: 'You do not have permission to assume this role' }, { status: 403 })
     }
 
     const token = await encode({

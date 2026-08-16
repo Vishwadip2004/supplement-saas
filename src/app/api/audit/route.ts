@@ -32,7 +32,12 @@ export async function GET(request: Request) {
     )
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { searchParams } = new URL(request.url)

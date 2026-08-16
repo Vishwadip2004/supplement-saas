@@ -7,6 +7,7 @@ import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { purchaseOrderStatusSchema, validateInput } from '@/lib/security/validation'
 
 export async function GET(
   request: Request,
@@ -24,7 +25,12 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { id } = await params
@@ -73,16 +79,28 @@ export async function PUT(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { id } = await params
-    const body = await request.json()
-    const { status } = body as { status?: string }
-
-    if (!status || !['APPROVED', 'RECEIVED', 'CANCELLED'].includes(status)) {
-      return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
+
+    const validation = validateInput(purchaseOrderStatusSchema, body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Validation failed', details: validation.errors.format() }, { status: 400 })
+    }
+
+    const { status } = validation.data
 
     const existing = await prisma.purchaseOrder.findFirst({
       where: { id, tenantId },
@@ -96,41 +114,73 @@ export async function PUT(
       return NextResponse.json({ error: 'Cannot change status from current state' }, { status: 400 })
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const order = await tx.purchaseOrder.update({
-        where: { id, tenantId },
-        data: { status: status as 'PENDING' | 'APPROVED' | 'RECEIVED' | 'CANCELLED' },
-        include: {
-          supplier: { select: { name: true } },
-          items: { include: { product: { select: { name: true, sku: true } } } },
-        },
+    if ((existing.status === 'CANCELLED' || existing.status === 'RECEIVED') && status === 'RECEIVED') {
+      return NextResponse.json({ error: 'Cannot receive a cancelled or already received order' }, { status: 400 })
+    }
+
+    const order = await prisma.purchaseOrder.update({
+      where: { id, tenantId },
+      data: { status: status as 'PENDING' | 'APPROVED' | 'RECEIVED' | 'CANCELLED' },
+      include: {
+        supplier: { select: { name: true } },
+        items: { include: { product: { select: { name: true, sku: true } } } },
+      },
+    })
+
+    if (status === 'RECEIVED') {
+      const items = await prisma.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: id },
       })
 
-      if (status === 'RECEIVED') {
-        const items = await tx.purchaseOrderItem.findMany({
-          where: { purchaseOrderId: id },
-        })
-        for (const item of items) {
-          await tx.product.update({
-            where: { id: item.productId },
+      const txOps = []
+      for (const item of items) {
+        txOps.push(
+          prisma.product.update({
+            where: { id: item.productId, tenantId },
             data: { quantity: { increment: item.quantity } },
           })
+        )
 
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              quantity: item.quantity,
-              type: 'IN',
-              reference: `PO-${order.id.slice(0, 8)}`,
-              notes: `Purchase order received`,
-              tenantId,
-            },
+        if (item.lotNumber) {
+          const existingLot = await prisma.lot.findFirst({
+            where: { productId: item.productId, batchNumber: item.lotNumber, tenantId },
           })
+          if (existingLot) {
+            txOps.push(
+              prisma.lot.update({
+                where: { id: existingLot.id },
+                data: { quantity: { increment: item.quantity } },
+              })
+            )
+          } else {
+            txOps.push(
+              prisma.lot.create({
+                data: {
+                  productId: item.productId,
+                  batchNumber: item.lotNumber,
+                  quantity: item.quantity,
+                  purchasePrice: item.unitPrice,
+                  landedCost: item.landedCost || null,
+                  expiryDate: item.expiryDate || null,
+                  tenantId,
+                },
+              })
+            )
+          }
         }
       }
 
-      return order
-    })
+      txOps.push(
+        prisma.supplier.update({
+          where: { id: order.supplierId, tenantId },
+          data: { totalOrders: { increment: 1 } },
+        })
+      )
+
+      await prisma.$transaction(txOps)
+    }
+
+    const updated = order
 
     await auditLogger.logDataChange(
       null,
@@ -174,7 +224,12 @@ export async function DELETE(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { id } = await params

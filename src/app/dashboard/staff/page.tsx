@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { csrfFetch } from '@/lib/csrf-client'
+import Pagination from '@/components/Pagination'
 
 interface StaffMember {
   id: string
@@ -79,10 +80,44 @@ export default function StaffPage() {
   }, [search, roleFilter])
 
   useEffect(() => {
-    if (status === 'authenticated' && isAdmin) {
-      loadStaff(1)
+    if (status !== 'authenticated' || !isAdmin) return
+
+    let cancelled = false
+    async function init() {
+      setLoading(true)
+      setError('')
+      try {
+        const params = new URLSearchParams({ page: '1', limit: '20' })
+        if (search) params.set('search', search)
+        if (roleFilter) params.set('role', roleFilter)
+        const res = await fetch(`/api/staff?${params}`)
+        if (!res.ok) throw new Error('Failed to load staff')
+        const data = await res.json()
+        if (!cancelled) {
+          setStaff(data.data)
+          setPagination(data.pagination)
+        }
+      } catch {
+        if (!cancelled) setError('Failed to load staff')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }, [status, isAdmin, loadStaff])
+    init()
+    return () => { cancelled = true }
+  }, [status, isAdmin, search, roleFilter])
+
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [error])
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,7 +134,7 @@ export default function StaffPage() {
         throw new Error(data.error || 'Failed to add staff')
       }
       const data = await res.json()
-      setGeneratedPassword(data.password)
+      setGeneratedPassword(data.generatedPassword)
       setSuccess(`Staff member "${data.name}" created successfully`)
       setAddForm({ name: '', email: '', role: 'STAFF' })
       loadStaff(pagination.page)
@@ -209,12 +244,13 @@ export default function StaffPage() {
               <p className="text-lg font-mono font-bold text-yellow-900 mt-1">{generatedPassword}</p>
             </div>
             <button
-              onClick={() => { navigator.clipboard.writeText(generatedPassword) }}
+              onClick={() => { navigator.clipboard.writeText(generatedPassword); setTimeout(() => setGeneratedPassword(''), 60000) }}
               className="px-3 py-1 text-sm bg-yellow-100 hover:bg-yellow-200 rounded-lg"
             >
-              Copy
+              Copy & Dismiss
             </button>
           </div>
+          <p className="text-xs text-yellow-600 mt-2">Password will auto-dismiss in 60 seconds. Copy it now.</p>
           <button onClick={() => setGeneratedPassword('')} className="mt-2 text-xs text-yellow-600 hover:underline">Dismiss</button>
         </div>
       )}
@@ -314,24 +350,12 @@ export default function StaffPage() {
             </tbody>
           </table>
 
-          {pagination.pages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between">
-              <p className="text-sm text-gray-500">
-                Showing {(pagination.page - 1) * pagination.limit + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
-              </p>
-              <div className="flex gap-1">
-                {Array.from({ length: pagination.pages }, (_, i) => i + 1).map((pageNum) => (
-                  <button
-                    key={pageNum}
-                    onClick={() => loadStaff(pageNum)}
-                    className={`px-3 py-1 text-sm border rounded-lg ${pageNum === pagination.page ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 hover:bg-gray-50'}`}
-                  >
-                    {pageNum}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <Pagination
+            page={pagination.page}
+            pages={pagination.pages}
+            total={pagination.total}
+            onPageChange={loadStaff}
+          />
         </div>
       )}
 

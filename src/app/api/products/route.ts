@@ -41,13 +41,18 @@ export async function GET(request: Request) {
     const category = searchParams.get('category') || ''
     const brand = searchParams.get('brand') || ''
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
-    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
+    const limit = Math.max(1, Math.min(500, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
+
+    // Category filter - exact match only
+    const categoryConditions: Record<string, unknown>[] = []
+    if (category) {
+      categoryConditions.push({ category })
+    }
 
     const where: Record<string, unknown> = {
       tenantId,
       isActive: true,
-      ...(category && { category }),
       ...(brand && { brand }),
       ...(search && {
         OR: [
@@ -58,6 +63,11 @@ export async function GET(request: Request) {
           { flavor: { contains: search, mode: 'insensitive' as const } },
         ],
       }),
+    }
+
+    // Combine category filter with AND to avoid OR conflicts
+    if (categoryConditions.length > 0) {
+      where.AND = [...(where.AND as [] || []), { OR: categoryConditions }]
     }
 
     const [products, total] = await Promise.all([
@@ -148,12 +158,34 @@ export async function POST(request: Request) {
       )
     }
 
+    const prismaData = { ...validation.data }
+    if (prismaData.expiryDate && typeof prismaData.expiryDate === 'string') {
+      prismaData.expiryDate = new Date(prismaData.expiryDate) as unknown as string
+    }
+
+    const batchNumber = prismaData.batchNumber as string | undefined
+    const expiryDate = prismaData.expiryDate as unknown as Date | undefined
+    const quantity = (prismaData.quantity as number) || 0
+    const purchasePrice = prismaData.purchasePrice as number | undefined
+
     const product = await prisma.product.create({
       data: {
-        ...validation.data,
-        brand: validation.data.brand || '',
+        ...prismaData,
+        brand: prismaData.brand || '',
         tenantId,
+        ...(batchNumber ? {
+          lots: {
+            create: {
+              tenantId,
+              batchNumber,
+              expiryDate: expiryDate || null,
+              quantity,
+              purchasePrice: purchasePrice || null,
+            },
+          },
+        } : {}),
       },
+      include: { lots: true },
     })
 
     await auditLogger.logDataChange(

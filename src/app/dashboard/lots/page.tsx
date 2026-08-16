@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { csrfFetch } from '@/lib/csrf-client'
+import Pagination from '@/components/Pagination'
 
 interface Product { id: string; name: string; sku: string }
 interface Lot {
@@ -10,8 +11,8 @@ interface Lot {
   productId: string
   batchNumber: string
   expiryDate: string | null
-  quantity: number
-  purchasePrice: number | null
+  quantity: number | ''
+  purchasePrice: number | '' | null
   landedCost: number | null
   receivedAt: string
   product: { name: string; sku: string }
@@ -34,8 +35,8 @@ export default function LotsPage() {
     productId: '',
     batchNumber: '',
     expiryDate: '',
-    quantity: 1,
-    purchasePrice: 0,
+    quantity: 1 as number | '',
+    purchasePrice: 0 as number | '',
   })
   const [submitting, setSubmitting] = useState(false)
 
@@ -58,6 +59,18 @@ export default function LotsPage() {
       setLoading(false)
     }
   }, [productFilter, batchFilter])
+
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [error])
 
   useEffect(() => {
     let cancelled = false
@@ -98,10 +111,15 @@ export default function LotsPage() {
     setSubmitting(true)
 
     try {
+      const payload = {
+        ...formData,
+        quantity: Number(formData.quantity) || 0,
+        purchasePrice: formData.purchasePrice === '' ? null : Number(formData.purchasePrice) || null,
+      }
       const res = await csrfFetch('/api/lots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       })
 
       if (!res.ok) {
@@ -244,13 +262,12 @@ export default function LotsPage() {
             </table>
           </div>
 
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200">
-              <button onClick={() => loadLots(page - 1)} disabled={page <= 1} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50">Previous</button>
-              <span className="text-sm text-gray-600">Page {page} of {pagination.pages}</span>
-              <button onClick={() => loadLots(page + 1)} disabled={page >= pagination.pages} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50">Next</button>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            pages={pagination.pages}
+            total={pagination.total}
+            onPageChange={loadLots}
+          />
         </div>
       )}
 
@@ -307,7 +324,7 @@ export default function LotsPage() {
                   <input
                     type="number"
                     value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
                     min={1}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     required
@@ -318,7 +335,7 @@ export default function LotsPage() {
                   <input
                     type="number"
                     value={formData.purchasePrice}
-                    onChange={(e) => setFormData({ ...formData, purchasePrice: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
                     min={0}
                     step={0.01}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"

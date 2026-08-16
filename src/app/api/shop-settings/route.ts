@@ -7,6 +7,7 @@ import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { shopSettingsSchema, validateInput } from '@/lib/security/validation'
 
 const DEFAULT_SHOP_NAME = 'SupplementShop'
 
@@ -21,16 +22,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
     const config = await prisma.systemConfig.findUnique({
-      where: { key: 'shop_name' },
+      where: { key: `shop_name:${tenantId}` },
     })
 
-    const response = NextResponse.json({
+    return setCorsHeaders(NextResponse.json({
       shopName: config?.value || DEFAULT_SHOP_NAME,
-    })
-    setCorsHeaders(response)
-    return response
+    }))
   } catch (error) {
     console.error('Error fetching shop settings:', error)
     return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
@@ -64,28 +70,29 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const body = await request.json()
-    const { shopName } = body
-
-    if (!shopName || !shopName.trim()) {
-      return NextResponse.json({ error: 'Shop name is required' }, { status: 400 })
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
 
-    if (shopName.trim().length > 50) {
-      return NextResponse.json({ error: 'Shop name must be 50 characters or less' }, { status: 400 })
+    const validation = validateInput(shopSettingsSchema, body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Validation failed', details: validation.errors.format() }, { status: 400 })
     }
+
+    const { shopName } = validation.data
 
     await prisma.systemConfig.upsert({
-      where: { key: 'shop_name' },
+      where: { key: `shop_name:${tenantId}` },
       update: { value: shopName.trim() },
-      create: { key: 'shop_name', value: shopName.trim(), description: 'Custom shop name displayed in sidebar and header' },
+      create: { key: `shop_name:${tenantId}`, value: shopName.trim(), description: 'Custom shop name displayed in sidebar and header' },
     })
 
     await auditLogger.logDataChange(null, tenantId, session.user?.id || '', 'shop_settings', 'shop_name', 'UPDATE', { shopName: shopName.trim() })
 
-    const response = NextResponse.json({ shopName: shopName.trim() })
-    setCorsHeaders(response)
-    return response
+    return setCorsHeaders(NextResponse.json({ shopName: shopName.trim() }))
   } catch (error) {
     console.error('Error updating shop settings:', error)
     return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 })

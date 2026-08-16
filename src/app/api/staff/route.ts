@@ -8,6 +8,7 @@ import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { staffCreateSchema, validateInput } from '@/lib/security/validation'
 import crypto from 'crypto'
 
 function generatePassword(): string {
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
 
     const where: Record<string, unknown> = {
       tenantId,
+      isActive: true,
       ...(role && { role }),
       ...(search && {
         OR: [
@@ -122,23 +124,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json()
-    const { name, email, role: userRole } = body
-
-    if (!name || !name.trim()) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
 
-    if (!email || !email.trim()) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 })
+    const validation = validateInput(staffCreateSchema, body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Validation failed', details: validation.errors.format() }, { status: 400 })
     }
 
-    if (!userRole || !['ADMIN', 'MANAGER', 'STAFF'].includes(userRole)) {
-      return NextResponse.json({ error: 'Valid role is required (ADMIN, MANAGER, or STAFF)' }, { status: 400 })
-    }
+    const { name, email, role: userRole } = validation.data
 
     const existingUser = await prisma.user.findFirst({
-      where: { email: email.trim(), tenantId },
+      where: { email: email.trim(), tenantId, isActive: true },
     })
     if (existingUser) {
       return NextResponse.json({ error: 'A user with this email already exists' }, { status: 409 })
@@ -172,8 +173,8 @@ export async function POST(request: Request) {
       name: user.name,
       email: user.email,
       role: user.role,
-      password,
-      message: 'Staff member created. Share the generated password securely.',
+      message: 'Staff member created. Share the generated password securely via a trusted channel.',
+      generatedPassword: password,
     }, { status: 201 })
     return setCorsHeaders(response)
   } catch (error) {

@@ -79,8 +79,8 @@ export default function RegisterPage() {
         .trim()
 
       const csrfRes = await fetch('/api/csrf', { credentials: 'same-origin' })
-      const csrfData = await csrfRes.json().catch(() => ({ token: '' }))
-      const csrfToken = csrfData.token || ''
+      const csrfData = await csrfRes.json().catch(() => ({ csrfToken: '' }))
+      const csrfToken = csrfData.csrfToken || ''
 
       const res = await fetch('/api/auth/register', {
         method: 'POST',

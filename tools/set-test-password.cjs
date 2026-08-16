@@ -1,10 +1,10 @@
 require('dotenv').config()
 const { PrismaClient } = require('@prisma/client')
-const { PrismaPg } = require('@prisma/adapter-pg')
+const { PrismaNeonHttp } = require('@prisma/adapter-neon')
 const bcrypt = require('bcryptjs')
 
 async function main() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+  const adapter = new PrismaNeonHttp(process.env.DATABASE_URL, {})
   const prisma = new PrismaClient({ adapter })
   const admin = await prisma.user.findFirst({ where: { role: 'ADMIN', isActive: true } })
   if (!admin) { console.error('No admin found'); process.exit(1) }

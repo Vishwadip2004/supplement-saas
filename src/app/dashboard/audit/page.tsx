@@ -2,6 +2,7 @@
 
 import { Fragment, useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
+import Pagination from '@/components/Pagination'
 
 interface AuditLogEntry {
   id: string
@@ -194,27 +195,12 @@ export default function AuditPage() {
             </tbody>
           </table>
 
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200">
-              <button
-                onClick={() => loadLogs(page - 1)}
-                disabled={page <= 1}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-gray-600">
-                Page {page} of {pagination.pages}
-              </span>
-              <button
-                onClick={() => loadLogs(page + 1)}
-                disabled={page >= pagination.pages}
-                className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            pages={pagination.pages}
+            total={pagination.total}
+            onPageChange={loadLogs}
+          />
         </div>
       )}
     </div>

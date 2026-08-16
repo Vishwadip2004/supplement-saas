@@ -5,6 +5,7 @@ import { auditLogger } from '@/lib/security/audit'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { z } from 'zod'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { sendPasswordResetEmail } from '@/lib/email'
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address').max(255),
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.error.format() },
+        { error: 'Validation failed' },
         { status: 400 }
       )
     }
@@ -72,9 +73,7 @@ export async function POST(request: Request) {
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[DEV] Password reset link for ${email}: ${resetUrl}`)
-    }
+    await sendPasswordResetEmail(email, resetUrl)
 
     return NextResponse.json({ message: 'If the email exists, a reset link has been sent' })
   } catch (error) {

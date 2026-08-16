@@ -71,10 +71,10 @@ export default function ExpiryAlertsPage() {
   if (!data) return null
 
   const tabs = [
-    { key: 'expired', label: 'Expired', count: data.summary.expiredCount, color: 'text-red-600 bg-red-50 border-red-200' },
-    { key: '30', label: 'Expiring in 30 Days', count: data.summary.expiring30Count, color: 'text-orange-600 bg-orange-50 border-orange-200' },
-    { key: '60', label: 'Expiring in 60 Days', count: data.summary.expiring60Count, color: 'text-yellow-600 bg-yellow-50 border-yellow-200' },
-    { key: '90', label: 'Expiring in 90 Days', count: data.summary.expiring90Count, color: 'text-blue-600 bg-blue-50 border-blue-200' },
+    { key: 'expired', label: 'Expired', count: data.summary.expiredCount, bg: 'bg-red-500', border: 'border-red-600', text: 'text-white' },
+    { key: '30', label: 'Expiring in 30 Days', count: data.summary.expiring30Count, bg: 'bg-orange-500', border: 'border-orange-600', text: 'text-white' },
+    { key: '60', label: 'Expiring in 60 Days', count: data.summary.expiring60Count, bg: 'bg-amber-400', border: 'border-amber-500', text: 'text-gray-900' },
+    { key: '90', label: 'Expiring in 90 Days', count: data.summary.expiring90Count, bg: 'bg-blue-500', border: 'border-blue-600', text: 'text-white' },
   ] as const
 
   const getActiveLots = () => {
@@ -95,23 +95,29 @@ export default function ExpiryAlertsPage() {
         <p className="text-sm text-gray-500 mt-1">Monitor product expiration dates and take action</p>
       </div>
 
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">{error}</div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={`p-4 rounded-xl border-2 text-left transition-all ${
-              activeTab === tab.key ? tab.color : 'border-gray-200 bg-white hover:bg-gray-50'
+              activeTab === tab.key
+                ? `${tab.bg} ${tab.border} ${tab.text} shadow-lg scale-[1.02]`
+                : 'border-gray-200 bg-white hover:bg-gray-50 text-gray-700'
             }`}
           >
-            <p className="text-2xl font-bold">{tab.count}</p>
-            <p className="text-sm font-medium mt-1">{tab.label}</p>
+            <p className={`text-2xl font-bold ${activeTab === tab.key ? tab.text : 'text-gray-900'}`}>{tab.count}</p>
+            <p className={`text-sm font-medium mt-1 ${activeTab === tab.key ? tab.text : 'text-gray-600'}`}>{tab.label}</p>
           </button>
         ))}
       </div>
 
       {data.summary.expiredCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+        <div className="bg-red-100 border-2 border-red-300 rounded-xl p-4 mb-6">
           <div className="flex items-center gap-3">
             <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -153,7 +159,7 @@ export default function ExpiryAlertsPage() {
                 activeLots.map((lot) => {
                   const isExpired = activeTab === 'expired'
                   return (
-                    <tr key={lot.id} className={isExpired ? 'bg-red-50' : ''}>
+                    <tr key={lot.id} className={isExpired ? 'bg-red-50 border-l-4 border-red-400' : ''}>
                       <td className="px-6 py-4">
                         <p className="text-sm font-medium text-gray-900">{lot.product.name}</p>
                         <p className="text-xs text-gray-500">{lot.product.sku}</p>
@@ -166,11 +172,11 @@ export default function ExpiryAlertsPage() {
                       </td>
                       <td className="px-6 py-4">
                         {isExpired ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-200 text-red-900">
                             Expired {lot.daysExpired}d ago
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-200 text-amber-900">
                             {lot.daysUntilExpiry}d left
                           </span>
                         )}

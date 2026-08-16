@@ -11,33 +11,30 @@ import { validateCsrfRequest } from '@/lib/csrf'
 
 export async function GET(request: Request) {
   const ip = getClientIp(request)
-  
+
   if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
     )
   }
-  
+
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
+
   let tenantId: string
   try {
     tenantId = extractTenantId(session)
   } catch {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  
+
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search') || ''
@@ -67,11 +64,14 @@ export async function GET(request: Request) {
       prisma.customer.count({ where }),
     ])
 
-    const pages = Math.ceil(total / limit)
-    
     const response = NextResponse.json({
       data: customers,
-      pagination: { page, limit, total, pages },
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     })
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
@@ -89,40 +89,37 @@ export async function POST(request: Request) {
   }
 
   const ip = getClientIp(request)
-  
+
   if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
     )
   }
-  
+
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
+
   if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
     return NextResponse.json(
       { error: 'Forbidden' },
       { status: 403 }
     )
   }
-  
+
   let tenantId: string
   try {
     tenantId = extractTenantId(session)
   } catch {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  
+
   try {
     let body: unknown
     try {
@@ -134,24 +131,21 @@ export async function POST(request: Request) {
       )
     }
     const validation = validateInput(customerSchema, body)
-    
+
     if (!validation.success) {
-      const details = process.env.NODE_ENV === 'production'
-        ? { _errors: ['Validation failed'] }
-        : validation.errors.format()
       return NextResponse.json(
-        { error: 'Validation failed', details },
+        { error: 'Validation failed', details: validation.errors.format() },
         { status: 400 }
       )
     }
-    
+
     const customer = await prisma.customer.create({
       data: {
         ...validation.data,
         tenantId,
       },
     })
-    
+
     await auditLogger.logDataChange(
       null,
       tenantId,
@@ -159,9 +153,9 @@ export async function POST(request: Request) {
       'customer',
       customer.id,
       'CREATE',
-      { name: customer.name, email: customer.email }
+      { name: customer.name }
     )
-    
+
     const response = NextResponse.json(customer, { status: 201 })
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {

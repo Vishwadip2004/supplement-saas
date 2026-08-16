@@ -8,7 +8,6 @@ const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
   { key: 'X-Powered-By', value: '' },
-  { key: 'X-XSS-Protection', value: '1; mode=block' },
   { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
   {
     key: 'Content-Security-Policy',
@@ -18,7 +17,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
-      "connect-src 'self'",
+      "connect-src 'self' ws: wss:",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

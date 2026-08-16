@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   try {
     const user = await prisma.user.findFirst({
       where: { email },
-      select: { passwordResetToken: true, passwordResetExpires: true },
+      select: { id: true, passwordResetToken: true, passwordResetExpires: true },
     })
 
     if (!user || !user.passwordResetToken || !user.passwordResetExpires) {
@@ -50,6 +50,10 @@ export async function GET(request: Request) {
     }
 
     if (user.passwordResetExpires < new Date()) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordResetToken: null, passwordResetExpires: null },
+      })
       return NextResponse.json({ message: 'If an account with that email exists, a reset link has been sent.' })
     }
 
@@ -131,21 +135,19 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 14)
 
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: user.id },
-        data: {
-          password: hashedPassword,
-          passwordResetToken: null,
-          passwordResetExpires: null,
-          failedLoginAttempts: 0,
-          isActive: true,
-          tokenVersion: { increment: 1 },
-        },
-      })
-      await tx.session.deleteMany({ where: { userId: user.id } })
-      await addPasswordToHistory(tx, user.id, hashedPassword)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        failedLoginAttempts: 0,
+        isActive: true,
+        tokenVersion: { increment: 1 },
+      },
     })
+    await prisma.session.deleteMany({ where: { userId: user.id } })
+    await addPasswordToHistory(prisma, user.id, hashedPassword)
 
     await auditLogger.logAuth(null, user.tenantId, user.id, 'PASSWORD_RESET_SUCCESS', 'success', ip)
 

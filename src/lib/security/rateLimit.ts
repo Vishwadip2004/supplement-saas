@@ -16,6 +16,7 @@ function getUpstashLimiter(): Ratelimit | null {
   return upstashLimiter
 }
 
+const MAX_STORE_SIZE = 10000
 const rateLimitStore = new Map<string, { count: number; lastReset: number }>()
 
 const CLEANUP_INTERVAL = 60 * 1000
@@ -40,6 +41,10 @@ function checkInMemoryRateLimit(
   const record = rateLimitStore.get(key)
 
   if (!record || now - record.lastReset > windowMs) {
+    if (rateLimitStore.size >= MAX_STORE_SIZE) {
+      const oldestKey = rateLimitStore.keys().next().value
+      if (oldestKey) rateLimitStore.delete(oldestKey)
+    }
     rateLimitStore.set(key, { count: 1, lastReset: now })
     return true
   }
@@ -54,7 +59,7 @@ function checkInMemoryRateLimit(
 
 export async function checkRateLimit(
   ip: string,
-  maxRequests: number = 100,
+  maxRequests: number = 300,
   windowMs: number = 15 * 60 * 1000
 ): Promise<boolean> {
   const limiter = getUpstashLimiter()
@@ -67,11 +72,9 @@ export async function checkRateLimit(
 
 export function getClientIp(request: Request): string {
   if (process.env.NODE_ENV === 'production') {
-    const forwarded = request.headers.get('x-forwarded-for')
-    if (forwarded) {
-      const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0].trim()
-      return ip || 'unknown'
-    }
+    const realIp = request.headers.get('x-real-ip')
+    if (realIp) return realIp
+    return 'unknown'
   }
-  return request.headers.get('x-real-ip') || 'unknown'
+  return request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }

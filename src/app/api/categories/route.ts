@@ -7,6 +7,14 @@ import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { z } from 'zod'
+
+const categorySchema = z.object({
+  name: z.string().min(1, 'Category name is required').max(100),
+  emoji: z.string().max(10).optional(),
+  color: z.string().max(30).optional(),
+  sortOrder: z.number().int().min(0).max(1000).optional(),
+})
 
 const DEFAULT_CATEGORIES = [
   { name: 'Whey Protein', emoji: '💪', color: 'blue' },
@@ -56,27 +64,25 @@ export async function GET(request: Request) {
     })
 
     if (categories.length === 0) {
-      const created = await prisma.category.createMany({
-        data: DEFAULT_CATEGORIES.map((cat, i) => ({
-          tenantId,
-          name: cat.name,
-          emoji: cat.emoji,
-          color: cat.color,
-          sortOrder: i,
-        })),
-      })
+      for (const [i, cat] of DEFAULT_CATEGORIES.entries()) {
+        await prisma.category.create({
+          data: {
+            tenantId,
+            name: cat.name,
+            emoji: cat.emoji,
+            color: cat.color,
+            sortOrder: i,
+          },
+        }).catch(() => {})
+      }
       const all = await prisma.category.findMany({
         where: { tenantId, isActive: true },
         orderBy: { sortOrder: 'asc' },
       })
-      const response = NextResponse.json(all)
-      setCorsHeaders(response)
-      return response
+      return setCorsHeaders(NextResponse.json(all))
     }
 
-    const response = NextResponse.json(categories)
-    setCorsHeaders(response)
-    return response
+    return setCorsHeaders(NextResponse.json(categories))
   } catch (error) {
     console.error('Error fetching categories:', error)
     return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 })
@@ -111,19 +117,37 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json()
-    const { name, emoji, color, sortOrder } = body
-
-    if (!name || !name.trim()) {
-      return NextResponse.json({ error: 'Category name is required' }, { status: 400 })
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
+    const validation = categorySchema.safeParse(body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
+    }
+    const { name, emoji, color, sortOrder } = validation.data
 
     const existing = await prisma.category.findFirst({
       where: { tenantId, name: name.trim() },
     })
 
     if (existing) {
-      return NextResponse.json({ error: 'Category already exists' }, { status: 409 })
+      if (existing.isActive) {
+        return NextResponse.json({ error: 'Category already exists' }, { status: 409 })
+      }
+      const reactivated = await prisma.category.update({
+        where: { id: existing.id },
+        data: {
+          isActive: true,
+          emoji: emoji || existing.emoji,
+          color: color || existing.color,
+          sortOrder: sortOrder ?? existing.sortOrder,
+        },
+      })
+      await auditLogger.logDataChange(null, tenantId, session.user?.id || '', 'category', reactivated.id, 'CREATE', { name: reactivated.name })
+      return setCorsHeaders(NextResponse.json(reactivated, { status: 201 }))
     }
 
     const category = await prisma.category.create({
@@ -138,11 +162,13 @@ export async function POST(request: Request) {
 
     await auditLogger.logDataChange(null, tenantId, session.user?.id || '', 'category', category.id, 'CREATE', { name: category.name })
 
-    const response = NextResponse.json(category, { status: 201 })
-    setCorsHeaders(response)
-    return response
+    return setCorsHeaders(NextResponse.json(category, { status: 201 }))
   } catch (error) {
     console.error('Error creating category:', error)
+    const message = error instanceof Error ? error.message : 'Failed to create category'
+    if (message.includes('Unique constraint')) {
+      return NextResponse.json({ error: 'Category already exists' }, { status: 409 })
+    }
     return NextResponse.json({ error: 'Failed to create category' }, { status: 500 })
   }
 }

@@ -3,15 +3,27 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { csrfFetch } from '@/lib/csrf-client'
+import { formatCurrency, formatDate } from '@/utils'
+import { escapeHtml } from '@/utils/escape-html'
+import Pagination from '@/components/Pagination'
 
-interface Supplier { id: string; name: string }
+interface Supplier { id: string; name: string; phone?: string; email?: string }
 interface Product { id: string; name: string; sku: string }
-interface OrderItem { id?: string; productId: string; quantity: number; unitPrice: number; product?: Product }
+interface OrderItem {
+  id?: string
+  productId: string
+  quantity: number | ''
+  unitPrice: number | ''
+  lotNumber?: string
+  expiryDate?: string
+  product?: Product
+}
 interface PurchaseOrder {
   id: string
   supplierId: string
   status: string
   totalAmount: number
+  expectedDeliveryDate?: string | null
   notes: string | null
   createdAt: string
   supplier: { name: string }
@@ -35,7 +47,12 @@ export default function PurchaseOrdersPage() {
   const [showModal, setShowModal] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [formData, setFormData] = useState({ supplierId: '', notes: '', items: [{ productId: '', quantity: 1, unitPrice: 0 }] })
+  const [formData, setFormData] = useState({
+    supplierId: '',
+    notes: '',
+    expectedDeliveryDate: '',
+    items: [{ productId: '', quantity: 1, unitPrice: 0, lotNumber: '', expiryDate: '' }],
+  })
   const [submitting, setSubmitting] = useState(false)
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState({ total: 0, pages: 1 })
@@ -59,6 +76,18 @@ export default function PurchaseOrdersPage() {
       setLoading(false)
     }
   }, [statusFilter])
+
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [error])
 
   useEffect(() => {
     let cancelled = false
@@ -102,18 +131,43 @@ export default function PurchaseOrdersPage() {
     e.preventDefault()
     setSubmitting(true)
     setError('')
+
+    if (!formData.supplierId) {
+      setError('Please select a supplier')
+      setSubmitting(false)
+      return
+    }
+
+    const invalidItem = formData.items.find(item => !item.productId || item.quantity <= 0 || item.unitPrice <= 0)
+    if (invalidItem) {
+      setError('Each item must have a product, quantity > 0, and price > 0')
+      setSubmitting(false)
+      return
+    }
+
     try {
+      const payload = {
+        ...formData,
+        expectedDeliveryDate: formData.expectedDeliveryDate || undefined,
+        items: formData.items.map(item => ({
+          productId: item.productId,
+          quantity: Number(item.quantity) || 0,
+          unitPrice: Number(item.unitPrice) || 0,
+          lotNumber: item.lotNumber || undefined,
+          expiryDate: item.expiryDate || undefined,
+        })),
+      }
       const res = await csrfFetch('/api/purchase-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Failed to create purchase order')
       }
       setShowModal(false)
-      setFormData({ supplierId: '', notes: '', items: [{ productId: '', quantity: 1, unitPrice: 0 }] })
+      setFormData({ supplierId: '', notes: '', expectedDeliveryDate: '', items: [{ productId: '', quantity: 1, unitPrice: 0, lotNumber: '', expiryDate: '' }] })
       setSuccess('Purchase order created successfully')
       loadOrders(1)
     } catch (err) {
@@ -157,7 +211,7 @@ export default function PurchaseOrdersPage() {
   }
 
   const addItem = () => {
-    setFormData({ ...formData, items: [...formData.items, { productId: '', quantity: 1, unitPrice: 0 }] })
+    setFormData({ ...formData, items: [...formData.items, { productId: '', quantity: 1, unitPrice: 0, lotNumber: '', expiryDate: '' }] })
   }
 
   const removeItem = (index: number) => {
@@ -171,7 +225,99 @@ export default function PurchaseOrdersPage() {
     setFormData({ ...formData, items })
   }
 
-  const totalAmount = formData.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)
+  const totalAmount = formData.items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0)
+
+  const printPo = (order: PurchaseOrder) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600,noopener,noreferrer')
+    if (!printWindow) return
+
+    const itemRows = order.items.map(item => `
+      <tr>
+        <td style="padding:8px;border:1px solid #ddd;">${escapeHtml(item.product?.name || item.productId)}</td>
+        <td style="padding:8px;border:1px solid #ddd;">${escapeHtml(item.product?.sku || '-')}</td>
+        <td style="padding:8px;border:1px solid #ddd;text-align:center;">${Number(item.quantity) || 0}</td>
+        <td style="padding:8px;border:1px solid #ddd;text-align:right;">${formatCurrency(Number(item.unitPrice) || 0)}</td>
+        <td style="padding:8px;border:1px solid #ddd;text-align:right;">${formatCurrency((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))}</td>
+      </tr>
+    `).join('')
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Purchase Order - ${escapeHtml(order.id.slice(0, 8))}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; padding: 40px; }
+          .header { display: flex; justify-content: space-between; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
+          .title { font-size: 28px; font-weight: bold; color: #333; }
+          .po-number { font-size: 14px; color: #666; margin-top: 5px; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+          .info-box { padding: 15px; background: #f9f9f9; border-radius: 8px; }
+          .info-box h3 { font-size: 12px; text-transform: uppercase; color: #666; margin-bottom: 8px; }
+          .info-box p { font-size: 14px; color: #333; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          th { background: #333; color: white; padding: 10px 8px; text-align: left; font-size: 12px; text-transform: uppercase; }
+          td { font-size: 13px; }
+          .total-row { font-weight: bold; background: #f0f0f0; }
+          .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
+          @media print { body { padding: 20px; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="title">PURCHASE ORDER</div>
+            <div class="po-number">PO-${order.id.slice(0, 8).toUpperCase()}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:14px;"><strong>Status:</strong> ${order.status}</div>
+            <div style="font-size:12px;color:#666;">Date: ${formatDate(order.createdAt)}</div>
+            ${order.expectedDeliveryDate ? `<div style="font-size:12px;color:#666;">Expected: ${formatDate(order.expectedDeliveryDate)}</div>` : ''}
+          </div>
+        </div>
+
+        <div class="info-grid">
+          <div class="info-box">
+            <h3>Supplier</h3>
+            <p><strong>${escapeHtml(order.supplier.name)}</strong></p>
+          </div>
+          <div class="info-box">
+            <h3>Order Details</h3>
+            <p>Items: ${order.items.length}</p>
+            ${order.notes ? `<p>Notes: ${escapeHtml(order.notes)}</p>` : ''}
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>SKU</th>
+              <th style="text-align:center;">Quantity</th>
+              <th style="text-align:right;">Unit Price</th>
+              <th style="text-align:right;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemRows}
+            <tr class="total-row">
+              <td colspan="4" style="padding:10px 8px;text-align:right;">TOTAL:</td>
+              <td style="padding:10px 8px;text-align:right;">${formatCurrency(order.totalAmount)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <p>Generated on ${new Date().toLocaleString()}</p>
+        </div>
+      </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
 
   return (
     <div>
@@ -214,6 +360,7 @@ export default function PurchaseOrdersPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Items</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Delivery</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -222,17 +369,21 @@ export default function PurchaseOrdersPage() {
             <tbody className="divide-y divide-gray-200">
               {orders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-mono text-gray-900">{order.id.slice(0, 8)}...</td>
+                  <td className="px-6 py-4 text-sm font-mono text-gray-900">PO-{order.id.slice(0, 8).toUpperCase()}</td>
                   <td className="px-6 py-4 text-sm text-gray-900">{order.supplier.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{order.items.length} items</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">₹{Number(order.totalAmount).toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">{formatCurrency(Number(order.totalAmount))}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {order.expectedDeliveryDate ? formatDate(order.expectedDeliveryDate) : '-'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusColors[order.status] || 'bg-gray-100'}`}>
                       {order.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(order.createdAt).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{formatDate(order.createdAt)}</td>
                   <td className="px-6 py-4 text-sm space-x-2">
+                    <button onClick={() => printPo(order)} className="text-indigo-600 hover:text-indigo-900">Print</button>
                     {canManage && order.status === 'PENDING' && (
                       <>
                         <button onClick={() => handleStatusUpdate(order.id, 'APPROVED')} className="text-blue-600 hover:text-blue-900">Approve</button>
@@ -251,13 +402,12 @@ export default function PurchaseOrdersPage() {
             </tbody>
           </table>
 
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200">
-              <button onClick={() => loadOrders(page - 1)} disabled={page <= 1} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50">Previous</button>
-              <span className="text-sm text-gray-600">Page {page} of {pagination.pages}</span>
-              <button onClick={() => loadOrders(page + 1)} disabled={page >= pagination.pages} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50">Next</button>
-            </div>
-          )}
+          <Pagination
+            page={page}
+            pages={pagination.pages}
+            total={pagination.total}
+            onPageChange={loadOrders}
+          />
         </div>
       )}
 
@@ -281,6 +431,16 @@ export default function PurchaseOrdersPage() {
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700">Expected Delivery Date</label>
+                  <input
+                    type="date"
+                    value={formData.expectedDeliveryDate}
+                    onChange={(e) => setFormData({ ...formData, expectedDeliveryDate: e.target.value })}
+                    className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700">Notes</label>
                   <textarea
                     value={formData.notes}
@@ -297,42 +457,73 @@ export default function PurchaseOrdersPage() {
                   </div>
                   <div className="space-y-3">
                     {formData.items.map((item, index) => (
-                      <div key={index} className="flex gap-3 items-end">
-                        <select
-                          value={item.productId}
-                          onChange={(e) => updateItem(index, 'productId', e.target.value)}
-                          required
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        >
-                          <option value="">Select product</option>
-                          {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
-                        </select>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
-                          min={1}
-                          required
-                          className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                          placeholder="Qty"
-                        />
-                        <input
-                          type="number"
-                          value={item.unitPrice}
-                          onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          min={0}
-                          step={0.01}
-                          required
-                          className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                          placeholder="Price"
-                        />
-                        {formData.items.length > 1 && (
-                          <button type="button" onClick={() => removeItem(index)} className="text-red-600 hover:text-red-900 text-sm">Remove</button>
-                        )}
+                      <div key={index} className="border rounded-lg p-3 space-y-2">
+                        <div className="flex gap-3 items-end">
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 mb-1">Product</label>
+                            <select
+                              value={item.productId}
+                              onChange={(e) => updateItem(index, 'productId', e.target.value)}
+                              required
+                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            >
+                              <option value="">Select product</option>
+                              {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Qty</label>
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateItem(index, 'quantity', e.target.value === '' ? '' : parseInt(e.target.value) || 1)}
+                              min={1}
+                              required
+                              className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Unit Price (₹)</label>
+                            <input
+                              type="number"
+                              value={item.unitPrice}
+                              onChange={(e) => updateItem(index, 'unitPrice', e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
+                              min={0.01}
+                              step={0.01}
+                              required
+                              className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                              placeholder="e.g. 10.00"
+                            />
+                          </div>
+                          {formData.items.length > 1 && (
+                            <button type="button" onClick={() => removeItem(index)} className="text-red-600 hover:text-red-900 text-sm mb-2">Remove</button>
+                          )}
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex-1">
+                            <label className="text-xs text-gray-500">Batch/Lot Number</label>
+                            <input
+                              type="text"
+                              value={item.lotNumber || ''}
+                              onChange={(e) => updateItem(index, 'lotNumber', e.target.value)}
+                              className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                              placeholder="Optional"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs text-gray-500">Expiry Date</label>
+                            <input
+                              type="date"
+                              value={item.expiryDate || ''}
+                              onChange={(e) => updateItem(index, 'expiryDate', e.target.value)}
+                              className="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
+                            />
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                  <p className="mt-2 text-sm text-gray-600">Total: ₹{totalAmount.toFixed(2)}</p>
+                  <p className="mt-2 text-sm text-gray-600">Total: {formatCurrency(totalAmount)}</p>
                 </div>
               </div>
 

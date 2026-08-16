@@ -8,6 +8,7 @@ export interface User {
   isActive: boolean
   mfaEnabled: boolean
   lastLogin?: Date
+  tokenVersion: number
   createdAt: Date
   updatedAt: Date
 }
@@ -23,26 +24,17 @@ export interface Product {
   category: string
   brand: string
   flavor?: string
+  size?: string
   purchasePrice: number
   sellingPrice: number
+  hsnCode?: string
+  gstRate: number
   quantity: number
   minStock: number
+  reorderLevel?: number
   expiryDate?: Date
   batchNumber?: string
   storageLocation?: string
-  isActive: boolean
-  createdAt: Date
-  updatedAt: Date
-}
-
-// Customer types
-export interface Customer {
-  id: string
-  tenantId: string
-  name: string
-  email?: string
-  phone?: string
-  address?: string
   isActive: boolean
   createdAt: Date
   updatedAt: Date
@@ -58,6 +50,11 @@ export interface Supplier {
   phone?: string
   address?: string
   notes?: string
+  leadTimeDays?: number
+  qualityRating?: number
+  onTimeRate?: number
+  totalOrders: number
+  onTimeOrders: number
   isActive: boolean
   createdAt: Date
   updatedAt: Date
@@ -69,24 +66,20 @@ export interface Sale {
   tenantId: string
   productId: string
   customerId?: string
+  invoiceNumber?: string
   quantity: number
   unitPrice: number
   discount: number
   totalAmount: number
-  paymentMethod: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER'
+  cgst: number
+  sgst: number
+  igst: number
+  totalTax: number
+  paymentMethod: 'CASH' | 'CARD' | 'TRANSFER' | 'UPI' | 'OTHER'
+  customerName?: string
   notes?: string
-  createdAt: Date
-}
-
-// Stock Movement types
-export interface StockMovement {
-  id: string
-  tenantId: string
-  productId: string
-  quantity: number
-  type: 'IN' | 'OUT' | 'ADJUSTMENT'
-  reference?: string
-  notes?: string
+  lotNumber?: string
+  expiryDate?: Date
   createdAt: Date
 }
 
@@ -97,9 +90,21 @@ export interface PurchaseOrder {
   supplierId: string
   status: 'PENDING' | 'APPROVED' | 'RECEIVED' | 'CANCELLED'
   totalAmount: number
+  expectedDeliveryDate?: Date
   notes?: string
   createdAt: Date
   updatedAt: Date
+}
+
+export interface PurchaseOrderItem {
+  id: string
+  purchaseOrderId: string
+  productId: string
+  quantity: number
+  unitPrice: number
+  landedCost?: number
+  lotNumber?: string
+  expiryDate?: Date
 }
 
 // API Response types
@@ -128,7 +133,6 @@ export interface DashboardData {
   expiringSoon: number
   totalSales: number
   todaySales: number
-  totalCustomers: number
   recentSales: DashboardSale[]
 }
 
@@ -148,15 +152,112 @@ export interface SaleWithRelations {
   tenantId: string
   productId: string
   customerId?: string | null
+  invoiceNumber?: string | null
   quantity: number
   unitPrice: number
   discount: number
   totalAmount: number
+  cgst: number
+  sgst: number
+  igst: number
+  totalTax: number
   paymentMethod: string
+  customerName?: string | null
   notes?: string | null
+  lotNumber?: string | null
+  expiryDate?: string | null
   createdAt: string
-  product: { name: string; sellingPrice: number }
-  customer: { name: string } | null
+  product: { name: string; sellingPrice: number; sku: string; hsnCode?: string; gstRate: number }
+  customer?: { id: string; name: string; phone?: string | null } | null
+}
+
+// Lot types
+export interface Lot {
+  id: string
+  tenantId: string
+  productId: string
+  batchNumber: string
+  expiryDate?: Date
+  quantity: number
+  purchasePrice?: number
+  landedCost?: number
+  coaUrl?: string
+  coaNotes?: string
+  receivedAt: Date
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Category types
+export interface Category {
+  id: string
+  tenantId: string
+  name: string
+  emoji: string
+  color: string
+  sortOrder: number
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Audit Log types
+export interface AuditLog {
+  id: string
+  tenantId: string
+  userId?: string
+  action: string
+  resource: string
+  resourceId?: string
+  details?: string
+  ipAddress?: string
+  userAgent?: string
+  status: 'SUCCESS' | 'FAILURE' | 'WARNING'
+  timestamp: Date
+}
+
+// GST Settings type
+export interface GstSettings {
+  gstin: string
+  businessName: string
+  businessAddress: string
+  businessState: string
+  stateCode: string
+  defaultGstRate: string
+  invoicePrefix: string
+  invoiceNextNumber: string
+}
+
+// Report types
+export interface SalesReport {
+  totalSales: number
+  totalTax: number
+  totalCgst: number
+  totalSgst: number
+  totalIgst: number
+  totalDiscount: number
+  invoiceCount: number
+  sales: SaleWithRelations[]
+}
+
+export interface StockReport {
+  totalProducts: number
+  totalStockValue: number
+  totalRetailValue: number
+  potentialProfit: number
+  lowStockCount: number
+  outOfStockCount: number
+}
+
+export interface GstReport {
+  period: { from: Date; to: Date }
+  business: Record<string, string>
+  gstByRate: Record<string, { taxable: number; cgst: number; sgst: number; igst: number; count: number }>
+  totalTaxable: number
+  totalCgst: number
+  totalSgst: number
+  totalIgst: number
+  totalInvoiceCount: number
 }
 
 // NextAuth type augmentation

@@ -45,7 +45,12 @@ export async function POST(request: Request) {
     }
 
     const { code } = validation.data
-    const tenantId = extractTenantId(session)
+    let tenantId: string
+    try {
+      tenantId = extractTenantId(session)
+    } catch {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     const user = await prisma.user.findFirst({
       where: { id: session.user.id, tenantId },

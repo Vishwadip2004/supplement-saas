@@ -8,25 +8,8 @@ import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
-
-async function getGstSettings() {
-  const keys = ['businessState', 'stateCode', 'invoicePrefix', 'invoiceNextNumber', 'defaultGstRate']
-  const configs = await prisma.systemConfig.findMany({ where: { key: { in: keys } } })
-  const settings: Record<string, string> = {}
-  for (const c of configs) settings[c.key] = c.value
-  return settings
-}
-
-function calculateGst(totalAmount: number, gstRate: number, isInterState: boolean) {
-  const divisor = 1 + gstRate / 100
-  const taxable = totalAmount / divisor
-  const tax = totalAmount - taxable
-  if (isInterState) {
-    return { taxable, cgst: 0, sgst: 0, igst: Math.round(tax * 100) / 100, totalTax: Math.round(tax * 100) / 100 }
-  }
-  const halfTax = tax / 2
-  return { taxable, cgst: Math.round(halfTax * 100) / 100, sgst: Math.round(halfTax * 100) / 100, igst: 0, totalTax: Math.round(tax * 100) / 100 }
-}
+import { calculateGst } from '@/utils/gst'
+import { generateInvoiceNumber } from '@/utils/invoice'
 
 export async function GET(request: Request) {
   const ip = getClientIp(request)
@@ -47,7 +30,12 @@ export async function GET(request: Request) {
     )
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { searchParams } = new URL(request.url)
@@ -69,8 +57,8 @@ export async function GET(request: Request) {
       prisma.sale.findMany({
         where,
         include: {
-          product: { select: { id: true, name: true, sku: true, sellingPrice: true, quantity: true } },
-          customer: { select: { id: true, name: true, email: true, phone: true } },
+          product: { select: { id: true, name: true, sku: true, sellingPrice: true, quantity: true, gstRate: true, hsnCode: true } },
+          customer: { select: { id: true, name: true, phone: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -128,7 +116,12 @@ export async function POST(request: Request) {
     )
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     let body: unknown
@@ -153,130 +146,77 @@ export async function POST(request: Request) {
     }
 
     const data = validation.data
-    const customerId = data.customerId
     const paymentMethod = data.paymentMethod
+    const customerName = 'customerName' in data ? (data as { customerName?: string }).customerName || null : null
+    const notes = 'notes' in data ? (data as { notes?: string }).notes || null : null
     const isMultiItem = 'items' in data
 
-    if (customerId) {
-      const customer = await prisma.customer.findFirst({
-        where: { id: customerId, tenantId },
-        select: { id: true, isActive: true },
-      })
-      if (!customer || !customer.isActive) {
-        return NextResponse.json(
-          { error: 'Customer not found' },
-          { status: 404 }
-        )
-      }
+    const gstConfigKeys = ['defaultGstRate', 'invoicePrefix', 'invoiceNextNumber', 'businessState', 'stateCode']
+    const tenantScopedKeys = gstConfigKeys.map(k => `${k}:${tenantId}`)
+    const gstConfigs = await prisma.systemConfig.findMany({ where: { key: { in: tenantScopedKeys } } })
+    const gstSettings: Record<string, string> = {}
+    for (const c of gstConfigs) {
+      const key = c.key.split(':')[0]
+      gstSettings[key] = c.value
     }
 
-    const sale = await prisma.$transaction(async (tx) => {
-      if (isMultiItem) {
-        const saleRecords = []
-        for (const item of data.items) {
-          const [product] = await tx.$queryRaw<
-            Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string }>
-          >`SELECT * FROM products WHERE id = ${item.productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
+    const defaultGstRate = parseFloat(gstSettings.defaultGstRate || '18')
+    const invoicePrefix = gstSettings.invoicePrefix || 'INV'
+    const businessState = gstSettings.businessState || ''
+    const customerState = 'customerState' in data ? (data as { customerState?: string }).customerState || '' : ''
+    const interState = businessState !== '' && customerState !== '' && businessState !== customerState
 
-          if (!product) {
-            throw new Error('PRODUCT_NOT_FOUND')
-          }
+    let sale: unknown
 
-          const unitPrice = item.unitPrice || Number(product.sellingPrice)
-          const qty = item.quantity
-          if (product.quantity < qty) {
-            throw new Error(`INSUFFICIENT_STOCK:${product.quantity}:${product.name}`)
-          }
+    if (isMultiItem) {
+      const saleRecords = []
 
-          let lotNumber: string | null = null
-          let saleExpiryDate: Date | null = null
-          let remainingQty = qty
+      const existingConfig = await prisma.systemConfig.findUnique({
+        where: { key: `invoiceNextNumber:${tenantId}` }
+      })
+      const currentVal = existingConfig ? parseInt(existingConfig.value, 10) : 0
+      const nextVal = currentVal + 1
 
-          const lots = await tx.lot.findMany({
-            where: { productId: item.productId, tenantId, quantity: { gt: 0 } },
-            orderBy: { expiryDate: 'asc' },
-          })
+      await prisma.systemConfig.upsert({
+        where: { key: `invoiceNextNumber:${tenantId}` },
+        update: { value: String(nextVal) },
+        create: { key: `invoiceNextNumber:${tenantId}`, value: String(nextVal), description: 'Invoice counter' }
+      })
 
-          for (const lot of lots) {
-            if (remainingQty <= 0) break
-            const deductFromLot = Math.min(lot.quantity, remainingQty)
-            await tx.lot.update({
-              where: { id: lot.id },
-              data: { quantity: { decrement: deductFromLot } },
-            })
-            remainingQty -= deductFromLot
-            if (!lotNumber) {
-              lotNumber = lot.batchNumber
-              saleExpiryDate = lot.expiryDate
-            }
-          }
+      const invoiceNumber = generateInvoiceNumber(invoicePrefix, nextVal)
 
-          const safeDiscount = Math.min(item.discount || 0, unitPrice * qty)
-          const totalAmount = Math.max(0, (unitPrice * qty) - safeDiscount)
-
-          const [saleRecord] = await Promise.all([
-            tx.sale.create({
-              data: {
-                productId: item.productId,
-                quantity: qty,
-                unitPrice,
-                discount: safeDiscount,
-                totalAmount,
-                customerId: customerId || null,
-                paymentMethod,
-                lotNumber,
-                expiryDate: saleExpiryDate,
-                tenantId,
-              },
-            }),
-            tx.product.update({
-              where: { id: item.productId, tenantId },
-              data: { quantity: { decrement: qty } },
-            }),
-            tx.stockMovement.create({
-              data: {
-                productId: item.productId,
-                quantity: -qty,
-                type: 'OUT',
-                reference: 'Sale',
-                lotNumber,
-                tenantId,
-              },
-            }),
-          ])
-          saleRecords.push(saleRecord)
-        }
-        return saleRecords
-      } else {
-        const { productId, quantity, discount } = data as { productId: string; quantity: number; discount?: number }
-        const [product] = await tx.$queryRaw<
-          Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string }>
-        >`SELECT * FROM products WHERE id = ${productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
+      for (const item of data.items) {
+        const [product] = await prisma.$queryRaw<
+          Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string; gstRate: import('@prisma/client').Prisma.Decimal }>
+        >`SELECT * FROM products WHERE id = ${item.productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
 
         if (!product) {
           throw new Error('PRODUCT_NOT_FOUND')
         }
 
-        if (product.quantity < quantity) {
+        const unitPrice = item.unitPrice || Number(product.sellingPrice)
+        const qty = item.quantity
+        if (!qty || qty <= 0 || !Number.isInteger(qty)) {
+          throw new Error('INVALID_QUANTITY')
+        }
+        if (product.quantity < qty) {
           throw new Error(`INSUFFICIENT_STOCK:${product.quantity}:${product.name}`)
         }
 
         let lotNumber: string | null = null
         let saleExpiryDate: Date | null = null
-        let remainingQty = quantity
+        let remainingQty = qty
 
-        const lots = await tx.lot.findMany({
-          where: { productId, tenantId, quantity: { gt: 0 } },
+        const lots = await prisma.lot.findMany({
+          where: { productId: item.productId, tenantId, quantity: { gt: 0 } },
           orderBy: { expiryDate: 'asc' },
         })
 
+        const lotUpdates: Array<{ id: string; decrement: number }> = []
         for (const lot of lots) {
           if (remainingQty <= 0) break
           const deductFromLot = Math.min(lot.quantity, remainingQty)
-          await tx.lot.update({
-            where: { id: lot.id },
-            data: { quantity: { decrement: deductFromLot } },
-          })
+          lotUpdates.push({ id: lot.id, decrement: deductFromLot })
           remainingQty -= deductFromLot
           if (!lotNumber) {
             lotNumber = lot.batchNumber
@@ -284,56 +224,154 @@ export async function POST(request: Request) {
           }
         }
 
-        const unitPrice = Number(product.sellingPrice)
-        const safeDiscount = Math.min(discount || 0, unitPrice * quantity)
-        const totalAmount = Math.max(0, (unitPrice * quantity) - safeDiscount)
+        const safeDiscount = Math.min(item.discount || 0, unitPrice * qty)
+        const totalAmount = Math.max(0, (unitPrice * qty) - safeDiscount)
+        const gst = calculateGst(totalAmount, Number(product.gstRate || defaultGstRate), interState, true)
 
-        const [saleRecord] = await Promise.all([
-          tx.sale.create({
+        const [saleRecord] = await prisma.$transaction([
+          ...lotUpdates.map(lu =>
+            prisma.lot.update({ where: { id: lu.id }, data: { quantity: { decrement: lu.decrement } } })
+          ),
+          prisma.product.update({ where: { id: item.productId, tenantId }, data: { quantity: { decrement: qty } } }),
+          prisma.sale.create({
             data: {
-              productId,
-              quantity,
+              productId: item.productId,
+              quantity: qty,
               unitPrice,
               discount: safeDiscount,
-              totalAmount,
-              customerId: customerId || null,
+              totalAmount: gst.totalAmount,
+              cgst: gst.cgst,
+              sgst: gst.sgst,
+              igst: gst.igst,
+              totalTax: gst.totalTax,
+              invoiceNumber,
               paymentMethod,
+              customerName,
+              notes,
               lotNumber,
               expiryDate: saleExpiryDate,
               tenantId,
             },
           }),
-          tx.product.update({
-            where: { id: productId, tenantId },
-            data: { quantity: { decrement: quantity } },
-          }),
-          tx.stockMovement.create({
-            data: {
-              productId,
-              quantity: -quantity,
-              type: 'OUT',
-              reference: 'Sale',
-              lotNumber,
-              tenantId,
-            },
-          }),
         ])
-
-        await auditLogger.logDataChange(
-          tx,
-          tenantId,
-          session.user.id,
-          'sale',
-          saleRecord.id,
-          'CREATE',
-          { productId, product: product.name, sku: product.sku, quantity, totalAmount: saleRecord.totalAmount, lotNumber }
-        )
-
-        return [saleRecord]
+        saleRecords.push(saleRecord as Record<string, unknown> & { id: string; quantity: number; totalAmount: unknown })
       }
-    })
 
-    const response = NextResponse.json(isMultiItem ? sale : sale[0], { status: 201 })
+      for (const record of saleRecords) {
+        try {
+          await auditLogger.logDataChange(
+            prisma,
+            tenantId,
+            session.user.id,
+            'sale',
+            record.id,
+            'CREATE',
+            { invoiceNumber, quantity: record.quantity, totalAmount: record.totalAmount }
+          )
+        } catch (auditError) {
+          console.error('Audit logging failed (non-critical):', auditError)
+        }
+      }
+
+      sale = { saleRecords, invoiceNumber }
+    } else {
+      const { productId, quantity, discount } = data as { productId: string; quantity: number; discount?: number }
+      const [product] = await prisma.$queryRaw<
+        Array<{ id: string; quantity: number; sellingPrice: import('@prisma/client').Prisma.Decimal; name: string; sku: string; gstRate: import('@prisma/client').Prisma.Decimal }>
+      >`SELECT * FROM products WHERE id = ${productId} AND "tenantId" = ${tenantId} AND "isActive" = true FOR UPDATE`
+
+      if (!product) {
+        throw new Error('PRODUCT_NOT_FOUND')
+      }
+
+      if (product.quantity < quantity) {
+        throw new Error(`INSUFFICIENT_STOCK:${product.quantity}:${product.name}`)
+      }
+
+      let lotNumber: string | null = null
+      let saleExpiryDate: Date | null = null
+      let remainingQty = quantity
+
+      const lots = await prisma.lot.findMany({
+        where: { productId, tenantId, quantity: { gt: 0 } },
+        orderBy: { expiryDate: 'asc' },
+      })
+
+      const lotUpdates: Array<{ id: string; decrement: number }> = []
+      for (const lot of lots) {
+        if (remainingQty <= 0) break
+        const deductFromLot = Math.min(lot.quantity, remainingQty)
+        lotUpdates.push({ id: lot.id, decrement: deductFromLot })
+        remainingQty -= deductFromLot
+        if (!lotNumber) {
+          lotNumber = lot.batchNumber
+          saleExpiryDate = lot.expiryDate
+        }
+      }
+
+      const unitPrice = Number(product.sellingPrice)
+      const safeDiscount = Math.min(discount || 0, unitPrice * quantity)
+      const totalAmount = Math.max(0, (unitPrice * quantity) - safeDiscount)
+      const gst = calculateGst(totalAmount, Number(product.gstRate || defaultGstRate), interState, true)
+
+      const existingConfig = await prisma.systemConfig.findUnique({
+        where: { key: `invoiceNextNumber:${tenantId}` }
+      })
+      const currentVal = existingConfig ? parseInt(existingConfig.value, 10) : 0
+      const nextVal = currentVal + 1
+
+      await prisma.systemConfig.upsert({
+        where: { key: `invoiceNextNumber:${tenantId}` },
+        update: { value: String(nextVal) },
+        create: { key: `invoiceNextNumber:${tenantId}`, value: String(nextVal), description: 'Invoice counter' }
+      })
+
+      const invoiceNumber = generateInvoiceNumber(invoicePrefix, nextVal)
+
+      const [saleRecord] = await prisma.$transaction([
+        ...lotUpdates.map(lu =>
+          prisma.lot.update({ where: { id: lu.id }, data: { quantity: { decrement: lu.decrement } } })
+        ),
+        prisma.product.update({ where: { id: productId, tenantId }, data: { quantity: { decrement: quantity } } }),
+        prisma.sale.create({
+          data: {
+            productId,
+            quantity,
+            unitPrice,
+            discount: safeDiscount,
+            totalAmount: gst.totalAmount,
+            cgst: gst.cgst,
+            sgst: gst.sgst,
+            igst: gst.igst,
+            totalTax: gst.totalTax,
+            invoiceNumber,
+            paymentMethod,
+            customerName,
+            notes,
+            lotNumber,
+            expiryDate: saleExpiryDate,
+            tenantId,
+          },
+        }),
+      ])
+
+      await auditLogger.logDataChange(
+        prisma,
+        tenantId,
+        session.user.id,
+        'sale',
+        (saleRecord as { id: string }).id,
+        'CREATE',
+        { productId, product: product.name, sku: product.sku, quantity, totalAmount: (saleRecord as { totalAmount: unknown }).totalAmount, invoiceNumber, lotNumber }
+      )
+
+      sale = [saleRecord]
+    }
+
+    const result = sale as unknown as { saleRecords?: typeof sale; invoiceNumber?: string } | typeof sale[]
+    const isMultiResult = Array.isArray(result)
+    const responseData = isMultiResult ? { sales: result, invoiceNumber: (result[0] as Record<string, unknown>)?.invoiceNumber } : result
+    const response = NextResponse.json(responseData, { status: 201 })
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Internal server error'
@@ -342,6 +380,9 @@ export async function POST(request: Request) {
     }
     if (message.startsWith('INSUFFICIENT_STOCK:')) {
       return NextResponse.json({ error: 'Insufficient stock for this product' }, { status: 400 })
+    }
+    if (message === 'INVALID_QUANTITY') {
+      return NextResponse.json({ error: 'Quantity must be a positive integer' }, { status: 400 })
     }
     console.error('Failed to create sale:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

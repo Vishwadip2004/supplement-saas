@@ -5,6 +5,17 @@ import Image from 'next/image'
 import { csrfFetch } from '@/lib/csrf-client'
 import { useSession } from 'next-auth/react'
 
+interface GstSettings {
+  gstin: string
+  businessName: string
+  businessAddress: string
+  businessState: string
+  stateCode: string
+  defaultGstRate: string
+  invoicePrefix: string
+  invoiceNextNumber: string
+}
+
 export default function SecurityPage() {
   const { data: session } = useSession()
   const isAdmin = session?.user?.role === 'ADMIN'
@@ -34,6 +45,14 @@ export default function SecurityPage() {
   const [savingShopName, setSavingShopName] = useState(false)
   const [shopNameSuccess, setShopNameSuccess] = useState('')
   const [shopNameError, setShopNameError] = useState('')
+
+  const [gstSettings, setGstSettings] = useState<GstSettings>({
+    gstin: '', businessName: '', businessAddress: '', businessState: '', stateCode: '27', defaultGstRate: '18', invoicePrefix: 'INV', invoiceNextNumber: '1',
+  })
+  const [gstLoading, setGstLoading] = useState(true)
+  const [savingGst, setSavingGst] = useState(false)
+  const [gstSuccess, setGstSuccess] = useState('')
+  const [gstError, setGstError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -73,6 +92,49 @@ export default function SecurityPage() {
     return () => { cancelled = true }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    async function fetchGstSettings() {
+      try {
+        const res = await fetch('/api/gst-settings')
+        if (res.ok && !cancelled) {
+          const data = await res.json()
+          setGstSettings(data)
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setGstLoading(false)
+      }
+    }
+    fetchGstSettings()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!passwordSuccess) return
+    const timer = setTimeout(() => setPasswordSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [passwordSuccess])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [error])
+
+  useEffect(() => {
+    if (!passwordError) return
+    const timer = setTimeout(() => setPasswordError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [passwordError])
+
   const handleSaveShopName = async () => {
     setShopNameError('')
     setShopNameSuccess('')
@@ -102,6 +164,29 @@ export default function SecurityPage() {
     }
   }
 
+  const handleSaveGst = async () => {
+    setGstError('')
+    setGstSuccess('')
+    setSavingGst(true)
+    try {
+      const res = await csrfFetch('/api/gst-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(gstSettings),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to save')
+      }
+      setGstSuccess('GST settings updated successfully')
+      setTimeout(() => setGstSuccess(''), 3000)
+    } catch (err) {
+      setGstError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSavingGst(false)
+    }
+  }
+
   const handleSetup = async () => {
     setError('')
     setSuccess('')
@@ -116,6 +201,7 @@ export default function SecurityPage() {
       setQrCode(data.qrCode)
       setSecret(data.secret)
       setSetupStep('show-qr')
+      setTimeout(() => setSecret(''), 30000)
     } catch {
       setError('Failed to setup MFA')
     }
@@ -265,6 +351,137 @@ export default function SecurityPage() {
                   </button>
                 </div>
                 <p className="mt-1 text-xs text-gray-500">This name will appear in the sidebar and browser tab. Max 50 characters.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* GST Settings */}
+      {isAdmin && (
+        <div className="bg-white shadow rounded-lg p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">GST & Invoice Settings</h2>
+          <p className="text-sm text-gray-500 mb-4">Configure GST details and invoice numbering for billing</p>
+
+          {gstError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{gstError}</div>
+          )}
+          {gstSuccess && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{gstSuccess}</div>
+          )}
+
+          {gstLoading ? (
+            <div className="text-sm text-gray-500">Loading...</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">GSTIN</label>
+                  <input
+                    type="text"
+                    value={gstSettings.gstin}
+                    onChange={(e) => setGstSettings({ ...gstSettings, gstin: e.target.value.toUpperCase() })}
+                    maxLength={15}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                    placeholder="22AAAAA0000A1Z5"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">15-digit GST Identification Number</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Business Name (for Invoice)</label>
+                  <input
+                    type="text"
+                    value={gstSettings.businessName}
+                    onChange={(e) => setGstSettings({ ...gstSettings, businessName: e.target.value })}
+                    maxLength={100}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Your Business Name"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Business Address</label>
+                <textarea
+                  value={gstSettings.businessAddress}
+                  onChange={(e) => setGstSettings({ ...gstSettings, businessAddress: e.target.value })}
+                  rows={2}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Full business address"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Business State</label>
+                  <input
+                    type="text"
+                    value={gstSettings.businessState}
+                    onChange={(e) => setGstSettings({ ...gstSettings, businessState: e.target.value })}
+                    maxLength={50}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="e.g. Maharashtra"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">State Code</label>
+                  <input
+                    type="text"
+                    value={gstSettings.stateCode}
+                    onChange={(e) => setGstSettings({ ...gstSettings, stateCode: e.target.value.replace(/\D/g, '').slice(0, 2) })}
+                    maxLength={2}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="27"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">2-digit state code (e.g. 27 for Maharashtra)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Default GST Rate (%)</label>
+                  <input
+                    type="number"
+                    value={gstSettings.defaultGstRate}
+                    onChange={(e) => setGstSettings({ ...gstSettings, defaultGstRate: e.target.value })}
+                    min="0"
+                    max="100"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Invoice Prefix</label>
+                  <input
+                    type="text"
+                    value={gstSettings.invoicePrefix}
+                    onChange={(e) => setGstSettings({ ...gstSettings, invoicePrefix: e.target.value.toUpperCase() })}
+                    maxLength={10}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                    placeholder="INV"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Prefix for invoice numbers (e.g. INV, BILL, TAX)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Next Invoice Number</label>
+                  <input
+                    type="number"
+                    value={gstSettings.invoiceNextNumber}
+                    onChange={(e) => setGstSettings({ ...gstSettings, invoiceNextNumber: e.target.value })}
+                    min="1"
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Next auto-generated invoice number</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={handleSaveGst}
+                  disabled={savingGst}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                >
+                  {savingGst ? 'Saving...' : 'Save GST Settings'}
+                </button>
               </div>
             </div>
           )}

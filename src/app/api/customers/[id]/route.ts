@@ -14,46 +14,43 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const ip = getClientIp(request)
-  
+
   if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
     )
   }
-  
+
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
+
   let tenantId: string
   try {
     tenantId = extractTenantId(session)
   } catch {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  
+
   try {
     const { id } = await params
     const customer = await prisma.customer.findFirst({
       where: { id, tenantId },
     })
-    
+
     if (!customer || !customer.isActive) {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }
       )
     }
-    
+
     const response = NextResponse.json(customer)
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
@@ -74,42 +71,50 @@ export async function PUT(
   }
 
   const ip = getClientIp(request)
-  
+
   if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
     )
   }
-  
+
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
+
   if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
     return NextResponse.json(
       { error: 'Forbidden' },
       { status: 403 }
     )
   }
-  
+
   let tenantId: string
   try {
     tenantId = extractTenantId(session)
   } catch {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  
+
   try {
     const { id } = await params
+    const existing = await prisma.customer.findFirst({
+      where: { id, tenantId },
+    })
+
+    if (!existing || !existing.isActive) {
+      return NextResponse.json(
+        { error: 'Customer not found' },
+        { status: 404 }
+      )
+    }
+
     let body: unknown
     try {
       body = await request.json()
@@ -120,33 +125,19 @@ export async function PUT(
       )
     }
     const validation = validateInput(customerSchema, body)
-    
+
     if (!validation.success) {
-      const details = process.env.NODE_ENV === 'production'
-        ? { _errors: ['Validation failed'] }
-        : validation.errors.format()
       return NextResponse.json(
-        { error: 'Validation failed', details },
+        { error: 'Validation failed', details: validation.errors.format() },
         { status: 400 }
       )
     }
-    
-    const existing = await prisma.customer.findFirst({
-      where: { id, tenantId },
-    })
-    
-    if (!existing || !existing.isActive) {
-      return NextResponse.json(
-        { error: 'Customer not found' },
-        { status: 404 }
-      )
-    }
-    
+
     const customer = await prisma.customer.update({
       where: { id, tenantId },
       data: validation.data,
     })
-    
+
     await auditLogger.logDataChange(
       null,
       tenantId,
@@ -154,12 +145,9 @@ export async function PUT(
       'customer',
       customer.id,
       'UPDATE',
-      {
-        before: { name: existing.name, email: existing.email },
-        after: { name: customer.name, email: customer.email },
-      }
+      { name: customer.name }
     )
-    
+
     const response = NextResponse.json(customer)
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
@@ -180,69 +168,66 @@ export async function DELETE(
   }
 
   const ip = getClientIp(request)
-  
+
   if (!(await checkRateLimit(ip))) {
     return NextResponse.json(
       { error: 'Too many requests' },
       { status: 429 }
     )
   }
-  
+
   const session = await getServerSession(authOptions)
-  
+
   if (!session) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
     )
   }
-  
-  if (!['ADMIN'].includes(session.user.role)) {
+
+  if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
     return NextResponse.json(
       { error: 'Forbidden' },
       { status: 403 }
     )
   }
-  
+
   let tenantId: string
   try {
     tenantId = extractTenantId(session)
   } catch {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  
+
   try {
     const { id } = await params
     const existing = await prisma.customer.findFirst({
       where: { id, tenantId },
     })
-    
+
     if (!existing || !existing.isActive) {
       return NextResponse.json(
         { error: 'Customer not found' },
         { status: 404 }
       )
     }
-    
-    await prisma.customer.update({
+
+    const customer = await prisma.customer.update({
       where: { id, tenantId },
       data: { isActive: false },
     })
-    
+
     await auditLogger.logDataChange(
       null,
       tenantId,
       session.user.id,
       'customer',
-      id,
+      customer.id,
       'DELETE',
-      { name: existing.name, email: existing.email }
+      { name: customer.name }
     )
-    
-    const response = NextResponse.json({ message: 'Customer deleted successfully' })
+
+    const response = NextResponse.json({ message: 'Customer deleted' })
     return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to delete customer:', error)

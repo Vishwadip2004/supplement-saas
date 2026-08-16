@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import type { Supplier } from '@/types'
 import { csrfFetch } from '@/lib/csrf-client'
+import Pagination from '@/components/Pagination'
 
 interface FormData {
   name: string
@@ -78,6 +79,18 @@ export default function SuppliersPage() {
     init()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [error])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -396,46 +409,12 @@ export default function SuppliersPage() {
         )}
       </div>
 
-      {pagination.pages > 1 && (
-        <div className="mt-6 flex items-center justify-between">
-          <p className="text-sm text-gray-700">
-            Showing page {page} of {pagination.pages} ({pagination.total} total)
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => loadSuppliers(page - 1, search)}
-              disabled={page <= 1}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
-              const pageNum = Math.max(1, Math.min(page - 2, pagination.pages - 4)) + i
-              if (pageNum > pagination.pages) return null
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => loadSuppliers(pageNum, search)}
-                  className={`px-3 py-1 text-sm border rounded-lg ${
-                    pageNum === page
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {pageNum}
-                </button>
-              )
-            })}
-            <button
-              onClick={() => loadSuppliers(page + 1, search)}
-              disabled={page >= pagination.pages}
-              className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        pages={pagination.pages}
+        total={pagination.total}
+        onPageChange={(p) => loadSuppliers(p, search)}
+      />
 
       {showModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -458,7 +437,7 @@ export default function SuppliersPage() {
                 </h3>
               </div>
 
-              <form onSubmit={handleSubmit} className="px-6 pb-6">
+              <form onSubmit={handleSubmit} noValidate className="px-6 pb-6">
                 <div className="space-y-4">
                   <div>
                     <label
@@ -471,7 +450,6 @@ export default function SuppliersPage() {
                       id="name"
                       name="name"
                       type="text"
-                      required
                       value={formData.name}
                       onChange={handleChange}
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -507,7 +485,7 @@ export default function SuppliersPage() {
                     <input
                       id="email"
                       name="email"
-                      type="email"
+                      type="text"
                       value={formData.email}
                       onChange={handleChange}
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"

@@ -106,7 +106,7 @@ async function testSecurityHeaders() {
 
 async function testUnauthenticated() {
   console.log('\n== UNAUTHENTICATED ACCESS ==')
-  for (const ep of ['GET /api/products', 'GET /api/customers', 'GET /api/sales', 'GET /api/suppliers', 'GET /api/purchase-orders', 'GET /api/stock-movements', 'GET /api/bundles', 'GET /api/volume-discounts', 'GET /api/recalls', 'GET /api/reports', 'GET /api/audit', 'GET /api/expiry-alerts']) {
+  for (const ep of ['GET /api/products', 'GET /api/customers', 'GET /api/sales', 'GET /api/suppliers', 'GET /api/purchase-orders', 'GET /api/stock-movements', 'GET /api/bundles', 'GET /api/recalls', 'GET /api/reports', 'GET /api/audit', 'GET /api/expiry-alerts']) {
     const [m, p] = ep.split(' ')
     const r = await api(m, p)
     if (r.s === 401 || r.s === 403) { ok(ep + ' blocked') } else { no(ep, 'got ' + r.s) }
@@ -369,24 +369,6 @@ async function testBundles() {
   }
 }
 
-async function testVolumeDiscounts() {
-  console.log('\n== VOLUME DISCOUNTS ==')
-  const ts = Date.now()
-  const list = await aGet('/api/volume-discounts')
-  if (list.s === 200) { ok('GET /api/volume-discounts') } else { no('GET /api/volume-discounts', '' + list.s) }
-
-  const cv = await aPost('/api/volume-discounts', { name: 'E2E Disc ' + ts, minQuantity: 10, discountType: 'PERCENTAGE', discountValue: 15 })
-  let vid = ''
-  if (cv.s === 201 && cv.d?.id) { vid = cv.d.id; ok('POST /api/volume-discounts') } else { no('POST /api/volume-discounts', (cv.s + ': ' + JSON.stringify(cv.d) ).slice(0, 150)) }
-
-  if (vid) {
-    const uv = await aPut('/api/volume-discounts', { id: vid, name: 'Updated Disc', discountValue: 20 })
-    if (uv.s === 200) { ok('PUT /api/volume-discounts') } else { no('PUT /api/volume-discounts', '' + uv.s) }
-    const dv = await aDel('/api/volume-discounts?id=' + vid)
-    if (dv.s === 200) { ok('DELETE /api/volume-discounts') } else { no('DELETE /api/volume-discounts', '' + dv.s) }
-  }
-}
-
 async function testRecalls() {
   console.log('\n== RECALLS ==')
   const ts = Date.now()
@@ -431,7 +413,7 @@ async function testPages() {
     const r = await httpReq('GET', p)
     if (r.status === 200) { ok(p + ' 200') } else { no(p, '' + r.status) }
   }
-  for (const p of ['/dashboard', '/dashboard/products', '/dashboard/customers', '/dashboard/sales', '/dashboard/suppliers', '/dashboard/stock', '/dashboard/purchase-orders', '/dashboard/bundles', '/dashboard/volume-discounts', '/dashboard/recalls', '/dashboard/audit', '/dashboard/reports', '/dashboard/settings', '/dashboard/expiry', '/dashboard/lots']) {
+  for (const p of ['/dashboard', '/dashboard/products', '/dashboard/customers', '/dashboard/sales', '/dashboard/suppliers', '/dashboard/stock', '/dashboard/purchase-orders', '/dashboard/bundles', '/dashboard/recalls', '/dashboard/audit', '/dashboard/reports', '/dashboard/settings', '/dashboard/expiry', '/dashboard/lots']) {
     const r = await httpReq('GET', p)
     if (r.status === 302 || r.status === 307) { ok(p + ' auth guard redirect') }
     else if (r.status === 200) { ok(p + ' 200') }
@@ -466,7 +448,6 @@ async function main() {
     await testSales()
     await testPurchaseOrders()
     await testBundles()
-    await testVolumeDiscounts()
     await testRecalls()
     await testReportsAuditExpiry()
   } catch (err: any) { console.error('\nFATAL:', err?.message || err) }

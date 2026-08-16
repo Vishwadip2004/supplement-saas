@@ -32,7 +32,12 @@ export async function GET(request: Request) {
     )
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const todayStart = new Date()
@@ -49,12 +54,11 @@ export async function GET(request: Request) {
     })
     const lowStockCount = lowStockProducts.filter((p) => p.quantity <= p.minStock).length
 
-    const [totalProducts, expiringSoon, totalSalesResult, todaySalesResult, totalCustomers, recentSales] = await Promise.all([
+    const [totalProducts, expiringSoon, totalSalesResult, todaySalesResult, recentSales] = await Promise.all([
       prisma.product.count({ where }),
       prisma.product.count({ where: { ...where, expiryDate: { gte: new Date(), lte: thirtyDaysFromNow } } }),
       prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { tenantId } }),
       prisma.sale.aggregate({ _sum: { totalAmount: true }, where: { tenantId, createdAt: { gte: todayStart } } }),
-      prisma.customer.count({ where }),
       prisma.sale.findMany({ where: { tenantId }, take: 10, orderBy: { createdAt: 'desc' }, include: { product: true } }),
     ])
 
@@ -64,7 +68,6 @@ export async function GET(request: Request) {
       expiringSoon,
       totalSales: totalSalesResult._sum.totalAmount ?? 0,
       todaySales: todaySalesResult._sum.totalAmount ?? 0,
-      totalCustomers,
       recentSales,
     })
     return setCorsHeaders(response, request.headers.get('origin'))

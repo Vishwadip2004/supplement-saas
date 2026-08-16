@@ -35,9 +35,9 @@ export default function BundlesPage() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    bundlePrice: 0,
-    discount: 0,
-    items: [] as { productId: string; quantity: number }[],
+    bundlePrice: 0 as number | '',
+    discount: 0 as number | '',
+    items: [] as { productId: string; quantity: number | '' }[],
   })
 
   useEffect(() => {
@@ -64,6 +64,18 @@ export default function BundlesPage() {
     load()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (!success) return
+    const timer = setTimeout(() => setSuccess(''), 5000)
+    return () => clearTimeout(timer)
+  }, [success])
+
+  useEffect(() => {
+    if (!error) return
+    const timer = setTimeout(() => setError(''), 8000)
+    return () => clearTimeout(timer)
+  }, [error])
 
   const loadData = async () => {
     try {
@@ -123,9 +135,17 @@ export default function BundlesPage() {
     }
 
     try {
-      const payload = editingBundle
-        ? { id: editingBundle.id, ...formData }
-        : formData
+      const payload = {
+        ...(editingBundle ? { id: editingBundle.id } : {}),
+        name: formData.name,
+        description: formData.description,
+        bundlePrice: Number(formData.bundlePrice) || 0,
+        discount: Number(formData.discount) || 0,
+        items: formData.items.map(item => ({
+          productId: item.productId,
+          quantity: Number(item.quantity) || 1,
+        })),
+      }
 
       const res = await csrfFetch('/api/bundles', {
         method: editingBundle ? 'PUT' : 'POST',
@@ -172,10 +192,10 @@ export default function BundlesPage() {
     }
   }
 
-  const calculateTotalPrice = (items: { productId: string; quantity: number }[]) => {
+  const calculateTotalPrice = (items: { productId: string; quantity: number | '' }[]) => {
     return items.reduce((sum, item) => {
       const product = products.find(p => p.id === item.productId)
-      return sum + (product ? Number(product.sellingPrice) * item.quantity : 0)
+      return sum + (product ? Number(product.sellingPrice) * Number(item.quantity || 0) : 0)
     }, 0)
   }
 
@@ -310,7 +330,7 @@ export default function BundlesPage() {
                       step="0.01"
                       min="0"
                       value={formData.bundlePrice}
-                      onChange={(e) => setFormData({ ...formData, bundlePrice: parseFloat(e.target.value) || 0 })}
+                      onChange={(e) => setFormData({ ...formData, bundlePrice: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
@@ -358,7 +378,7 @@ export default function BundlesPage() {
                             type="number"
                             min="1"
                             value={item.quantity}
-                            onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                            onChange={(e) => updateItem(index, 'quantity', e.target.value === '' ? '' : parseInt(e.target.value) || 1)}
                             className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                           <button
@@ -375,9 +395,9 @@ export default function BundlesPage() {
                       {formData.items.length > 0 && (
                         <p className="text-sm text-gray-500 mt-2">
                           Individual total: {formatCurrency(calculateTotalPrice(formData.items))}
-                          {formData.bundlePrice > 0 && (
+                          {Number(formData.bundlePrice) > 0 && (
                             <span className="ml-2 text-green-600 font-medium">
-                              Save {formatCurrency(calculateTotalPrice(formData.items) - formData.bundlePrice)}
+                              Save {formatCurrency(calculateTotalPrice(formData.items) - Number(formData.bundlePrice))}
                             </span>
                           )}
                         </p>

@@ -20,17 +20,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') || ''
+    const batchNumber = searchParams.get('batchNumber') || ''
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
     const limit = Math.max(1, Math.min(100, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
     const where: Record<string, unknown> = { tenantId }
-    if (status && ['ACTIVE', 'RESOLVED'].includes(status)) {
+    if (status && ['ACTIVE', 'COMPLETED', 'CANCELLED'].includes(status)) {
       where.status = status
     }
 
@@ -44,8 +50,32 @@ export async function GET(request: Request) {
       prisma.recall.count({ where }),
     ])
 
+    let sales: unknown[] = []
+    if (batchNumber) {
+      const recall = recalls.find(r => r.batchNumber === batchNumber) || await prisma.recall.findFirst({
+        where: { tenantId, batchNumber },
+      })
+      if (recall) {
+        const affectedProductNames = recall.productName ? [recall.productName] : []
+        sales = await prisma.sale.findMany({
+          where: {
+            tenantId,
+            OR: [
+              { lotNumber: batchNumber },
+              ...(affectedProductNames.length > 0 ? [{ product: { name: { in: affectedProductNames } } }] : []),
+            ],
+          },
+          include: {
+            product: { select: { name: true, sku: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      }
+    }
+
     const response = NextResponse.json({
       data: recalls,
+      sales,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     })
     return setCorsHeaders(response, request.headers.get('origin'))
@@ -74,7 +104,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     let body: unknown
@@ -103,43 +138,25 @@ export async function POST(request: Request) {
     const affectedQuantity = lots.reduce((sum, lot) => sum + lot.quantity, 0)
     const productName = lots[0]?.product?.name || 'Unknown'
 
-    const recall = await prisma.$transaction(async (tx) => {
-      const recallRecord = await tx.recall.create({
-        data: {
-          batchNumber,
-          productName,
-          reason,
-          affectedQuantity,
-          notes: notes || null,
-          tenantId,
-        },
-      })
-
-      for (const lot of lots) {
-        await tx.lot.update({
-          where: { id: lot.id },
-          data: { quantity: 0 },
-        })
-
-        await tx.stockMovement.create({
-          data: {
-            productId: lot.productId,
-            quantity: -lot.quantity,
-            type: 'ADJUSTMENT',
-            reference: `RECALL: ${batchNumber} - ${reason}`,
-            lotNumber: batchNumber,
-            tenantId,
-          },
-        })
-
-        await tx.product.update({
-          where: { id: lot.productId, tenantId },
-          data: { quantity: { decrement: lot.quantity } },
-        })
-      }
-
-      return recallRecord
+    const recallRecord = await prisma.recall.create({
+      data: {
+        batchNumber,
+        productName,
+        reason,
+        affectedQuantity,
+        notes: notes || null,
+        tenantId,
+      },
     })
+
+    await prisma.$transaction([
+      ...lots.flatMap(lot => [
+        prisma.lot.update({ where: { id: lot.id }, data: { quantity: 0 } }),
+        prisma.product.update({ where: { id: lot.productId, tenantId }, data: { quantity: { decrement: lot.quantity } } }),
+      ]),
+    ])
+
+    const recall = recallRecord
 
     await auditLogger.logDataChange(
       null,
@@ -151,12 +168,20 @@ export async function POST(request: Request) {
       { batchNumber, reason, affectedQuantity }
     )
 
+    const affectedProductNames = [...new Set(lots.map(l => l.product?.name).filter(Boolean))]
+
     const sales = await prisma.sale.findMany({
-      where: { tenantId, lotNumber: batchNumber },
+      where: {
+        tenantId,
+        OR: [
+          { lotNumber: batchNumber },
+          { product: { name: { in: affectedProductNames } } },
+        ],
+      },
       include: {
         product: { select: { name: true, sku: true } },
-        customer: { select: { name: true, email: true, phone: true } },
       },
+      orderBy: { createdAt: 'desc' },
     })
 
     const response = NextResponse.json({ recall, sales }, { status: 201 })

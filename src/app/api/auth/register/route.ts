@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 
     if (!validation.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.errors.format() },
+        { error: 'Validation failed' },
         { status: 400 }
       )
     }
@@ -70,14 +70,14 @@ export async function POST(request: Request) {
     })
     if (existingUser) {
       return NextResponse.json(
-        { error: 'Registration failed' },
+        { error: 'An account with this email already exists' },
         { status: 409 }
       )
     }
 
     const hashedPassword = await bcrypt.hash(password, 14)
 
-    const result = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: { name: shopName, slug: shopSlug },
       })
@@ -93,14 +93,12 @@ export async function POST(request: Request) {
       })
 
       await addPasswordToHistory(tx, user.id, hashedPassword)
-
-      return { tenant, user }
     })
 
     await auditLogger.logAuth(
       null,
-      result.tenant.id,
-      result.user.id,
+      '',
+      '',
       'REGISTER_SUCCESS',
       'success',
       ip

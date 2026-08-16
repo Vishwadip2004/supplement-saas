@@ -36,7 +36,12 @@ export async function POST(request: Request) {
     )
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const body = await request.json()
@@ -83,15 +88,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid code' }, { status: 400 })
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: user.id },
-        data: { mfaEnabled: false, mfaSecret: null, tokenVersion: { increment: 1 } },
-      })
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { mfaEnabled: false, mfaSecret: null, tokenVersion: { increment: 1 } },
+    })
 
-      await tx.session.deleteMany({
-        where: { userId: user.id },
-      })
+    await prisma.session.deleteMany({
+      where: { userId: user.id },
     })
 
     await auditLogger.logDataChange(

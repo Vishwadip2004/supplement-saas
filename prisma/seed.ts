@@ -1,14 +1,27 @@
 import 'dotenv/config'
 import { PrismaClient, Role, PaymentMethod } from '@prisma/client'
-import { PrismaPg } from '@prisma/adapter-pg'
 import bcrypt from 'bcryptjs'
-import crypto from 'crypto'
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
-const prisma = new PrismaClient({ adapter })
+const databaseUrl = process.env.DATABASE_URL!
+const isNeon = databaseUrl.includes('neon.tech')
 
-function generatePassword(): string {
-  return crypto.randomBytes(18).toString('base64url').slice(0, 16) + '!A1'
+let prisma: PrismaClient
+if (isNeon) {
+  // Use PrismaPg (TCP) which supports interactive transactions.
+  // PrismaNeonHttp does NOT support transactions.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { PrismaPg } = require('@prisma/adapter-pg')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pool } = require('pg')
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,
+  })
+  const adapter = new PrismaPg(pool)
+  prisma = new PrismaClient({ adapter })
+} else {
+  prisma = new PrismaClient()
 }
 
 const products = [
@@ -343,84 +356,88 @@ const suppliers = [
 async function main() {
   console.log('Seeding database with full supplement catalog...')
 
-  const tenant = await prisma.tenant.upsert({
-    where: { slug: 'supplement-shop' },
-    update: {},
-    create: {
-      name: 'Supplement Shop',
-      slug: 'supplement-shop',
-      plan: 'pro',
-    },
-  })
+  let tenant = null
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      tenant = await prisma.tenant.findUnique({ where: { slug: 'supplement-shop' } })
+      break
+    } catch (e) {
+      if (attempt < 3) {
+        console.log(`Connection attempt ${attempt} failed, retrying in 5s...`)
+        await new Promise(r => setTimeout(r, 5000))
+      } else {
+        throw e
+      }
+    }
+  }
 
+  if (!tenant) {
+    tenant = await prisma.tenant.create({ data: { name: 'Supplement Shop', slug: 'supplement-shop' } })
+  }
+
+  const tenantId = tenant.id
   console.log('Created tenant:', tenant.name)
 
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD || generatePassword()
-  const staffPassword = process.env.SEED_STAFF_PASSWORD || generatePassword()
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'Admin@123456'
+  const managerPassword = process.env.SEED_MANAGER_PASSWORD || 'Manager@123456'
+  const staffPassword = process.env.SEED_STAFF_PASSWORD || 'Staff@123456'
   const hashedAdmin = await bcrypt.hash(adminPassword, 14)
+  const hashedManager = await bcrypt.hash(managerPassword, 14)
   const hashedStaff = await bcrypt.hash(staffPassword, 14)
 
-  const admin = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'admin@supplementshop.com' } },
-    update: { password: hashedAdmin, isActive: true, failedLoginAttempts: 0 },
-    create: {
-      email: 'admin@supplementshop.com',
-      name: 'Admin User',
-      password: hashedAdmin,
-      role: Role.ADMIN,
-      tenantId: tenant.id,
-    },
-  })
+  async function upsertUser(email: string, name: string, password: string, role: Role) {
+    const existing = await prisma.user.findUnique({
+      where: { tenantId_email: { tenantId, email } },
+    })
+    if (existing) {
+      return prisma.user.update({
+        where: { id: existing.id },
+        data: { password, isActive: true, failedLoginAttempts: 0 },
+      })
+    }
+    return prisma.user.create({
+      data: { email, name, password, role, tenantId },
+    })
+  }
 
-  const manager = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'manager@supplementshop.com' } },
-    update: { password: hashedStaff, isActive: true, failedLoginAttempts: 0 },
-    create: {
-      email: 'manager@supplementshop.com',
-      name: 'Manager User',
-      password: hashedStaff,
-      role: Role.MANAGER,
-      tenantId: tenant.id,
-    },
-  })
+  const admin = await upsertUser('admin@supplementshop.com', 'Admin User', hashedAdmin, Role.ADMIN)
+  const manager = await upsertUser('manager@supplementshop.com', 'Manager User', hashedManager, Role.MANAGER)
+  const staffUser = await upsertUser('staff@supplementshop.com', 'Staff User', hashedStaff, Role.STAFF)
 
-  const staff = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'staff@supplementshop.com' } },
-    update: { password: hashedStaff, isActive: true, failedLoginAttempts: 0 },
-    create: {
-      email: 'staff@supplementshop.com',
-      name: 'Staff User',
-      password: hashedStaff,
-      role: Role.STAFF,
-      tenantId: tenant.id,
-    },
-  })
-
-  console.log('Created users:', admin.email, manager.email, staff.email)
+  console.log('Created users:', admin.email, manager.email, staffUser.email)
 
   const createdProducts = []
   for (const product of products) {
-    const p = await prisma.product.upsert({
-      where: { tenantId_sku: { tenantId: tenant.id, sku: product.sku } },
-      update: { quantity: product.quantity },
-      create: {
-        ...product,
-        storageLocation: 'Warehouse A',
-        batchNumber: `BATCH-${product.sku}`,
-        tenantId: tenant.id,
-      },
+    const existing = await prisma.product.findUnique({
+      where: { tenantId_sku: { tenantId, sku: product.sku } },
     })
+    let p
+    if (existing) {
+      p = await prisma.product.update({
+        where: { id: existing.id },
+        data: { quantity: product.quantity },
+      })
+    } else {
+      p = await prisma.product.create({
+        data: {
+          ...product,
+          storageLocation: 'Warehouse A',
+          batchNumber: `BATCH-${product.sku}`,
+          tenantId,
+        },
+      })
+    }
     createdProducts.push(p)
   }
 
   console.log('Created', createdProducts.length, 'products')
 
   const createdCustomers = []
-  const existingCustomerCount = await prisma.customer.count({ where: { tenantId: tenant.id } })
+  const existingCustomerCount = await prisma.customer.count({ where: { tenantId } })
   if (existingCustomerCount < 8) {
     for (const customer of customers) {
       const c = await prisma.customer.create({
-        data: { ...customer, tenantId: tenant.id },
+        data: { ...customer, tenantId },
       })
       createdCustomers.push(c)
     }
@@ -430,11 +447,11 @@ async function main() {
   }
 
   const createdSuppliers = []
-  const existingSupplierCount = await prisma.supplier.count({ where: { tenantId: tenant.id } })
+  const existingSupplierCount = await prisma.supplier.count({ where: { tenantId } })
   if (existingSupplierCount < 4) {
     for (const supplier of suppliers) {
       const s = await prisma.supplier.create({
-        data: { ...supplier, tenantId: tenant.id },
+        data: { ...supplier, tenantId },
       })
       createdSuppliers.push(s)
     }
@@ -444,7 +461,7 @@ async function main() {
   }
 
   const paymentMethods = [PaymentMethod.CASH, PaymentMethod.CARD, PaymentMethod.TRANSFER]
-  const existingSales = await prisma.sale.count({ where: { tenantId: tenant.id } })
+  const existingSales = await prisma.sale.count({ where: { tenantId } })
   if (existingSales < 10) {
     const sales = []
     for (let i = 0; i < 25; i++) {
@@ -462,7 +479,7 @@ async function main() {
         discount,
         totalAmount,
         paymentMethod: paymentMethods[i % paymentMethods.length],
-        tenantId: tenant.id,
+        tenantId,
       })
     }
 
@@ -477,10 +494,10 @@ async function main() {
 
   console.log('Seed complete!')
   console.log('')
-  console.log('Login credentials (use SEED_ADMIN_PASSWORD/SEED_STAFF_PASSWORD env vars):')
-  console.log('  Admin:   admin@supplementshop.com / ' + (process.env.SEED_ADMIN_PASSWORD || '(auto-generated)'))
-  console.log('  Manager: manager@supplementshop.com / ' + (process.env.SEED_STAFF_PASSWORD || '(auto-generated)'))
-  console.log('  Staff:   staff@supplementshop.com / ' + (process.env.SEED_STAFF_PASSWORD || '(auto-generated)'))
+  console.log('Login credentials:')
+  console.log('  Admin:   admin@supplementshop.com / ' + adminPassword)
+  console.log('  Manager: manager@supplementshop.com / ' + managerPassword)
+  console.log('  Staff:   staff@supplementshop.com / ' + staffPassword)
 }
 
 main()

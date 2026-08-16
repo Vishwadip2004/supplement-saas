@@ -8,6 +8,7 @@ import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { staffUpdateSchema, validateInput } from '@/lib/security/validation'
 
 export async function PATCH(
   request: Request,
@@ -40,8 +41,19 @@ export async function PATCH(
 
   try {
     const { id } = await params
-    const body = await request.json()
-    const { name, email, role: userRole, isActive, newPassword } = body
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+
+    const validation = validateInput(staffUpdateSchema, body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Validation failed', details: validation.errors.format() }, { status: 400 })
+    }
+
+    const { name, email, role: userRole, isActive, newPassword } = validation.data
 
     const existing = await prisma.user.findFirst({
       where: { id, tenantId },
@@ -57,7 +69,7 @@ export async function PATCH(
 
     if (email && email.trim() !== existing.email) {
       const duplicate = await prisma.user.findFirst({
-        where: { email: email.trim(), tenantId, id: { not: id } },
+        where: { email: email.trim(), tenantId, id: { not: id }, isActive: true },
       })
       if (duplicate) {
         return NextResponse.json({ error: 'Email already in use' }, { status: 409 })
@@ -71,14 +83,11 @@ export async function PATCH(
     if (isActive !== undefined) updateData.isActive = Boolean(isActive)
 
     if (newPassword) {
-      if (newPassword.length < 8) {
-        return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
-      }
       updateData.password = await bcrypt.hash(newPassword, 14)
     }
 
     const updated = await prisma.user.update({
-      where: { id },
+      where: { id, tenantId },
       data: updateData,
       select: {
         id: true,
@@ -155,7 +164,7 @@ export async function DELETE(
     }
 
     await prisma.user.update({
-      where: { id },
+      where: { id, tenantId },
       data: { isActive: false },
     })
 

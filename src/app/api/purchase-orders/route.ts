@@ -22,7 +22,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { searchParams } = new URL(request.url)
@@ -80,7 +85,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     let body: unknown
@@ -92,13 +102,25 @@ export async function POST(request: Request) {
     const validation = validateInput(purchaseOrderSchema, body)
 
     if (!validation.success) {
+      console.error('[POST /api/purchase-orders] Validation errors:', JSON.stringify(validation.errors.issues))
+      const details = process.env.NODE_ENV === 'production'
+        ? { _errors: ['Validation failed'] }
+        : validation.errors.format()
       return NextResponse.json(
-        { error: 'Validation failed', details: validation.errors.format() },
+        { error: 'Validation failed', details },
         { status: 400 }
       )
     }
 
     const { supplierId, notes, items } = validation.data
+    const bodyData = body as Record<string, unknown>
+    let expectedDeliveryDate: Date | null = null
+    if (bodyData.expectedDeliveryDate && typeof bodyData.expectedDeliveryDate === 'string') {
+      const parsed = new Date(bodyData.expectedDeliveryDate)
+      if (!isNaN(parsed.getTime())) {
+        expectedDeliveryDate = parsed
+      }
+    }
 
     const supplier = await prisma.supplier.findFirst({
       where: { id: supplierId, tenantId },
@@ -125,12 +147,15 @@ export async function POST(request: Request) {
         supplierId,
         totalAmount,
         notes,
+        expectedDeliveryDate,
         tenantId,
         items: {
           create: items.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
+            lotNumber: (item as Record<string, unknown>).lotNumber as string || null,
+            expiryDate: (item as Record<string, unknown>).expiryDate ? new Date((item as Record<string, unknown>).expiryDate as string) : null,
           })),
         },
       },

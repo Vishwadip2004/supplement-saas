@@ -30,20 +30,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  let tenantId: string
   try {
-    const keys = Object.keys(GST_DEFAULTS)
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const keys = Object.keys(GST_DEFAULTS).map(k => `${k}:${tenantId}`)
     const configs = await prisma.systemConfig.findMany({
       where: { key: { in: keys } },
     })
 
     const gstSettings: Record<string, string> = { ...GST_DEFAULTS }
     for (const config of configs) {
-      gstSettings[config.key] = config.value
+      const key = config.key.split(':')[0]
+      gstSettings[key] = config.value
     }
 
-    const response = NextResponse.json(gstSettings)
-    setCorsHeaders(response)
-    return response
+    return setCorsHeaders(NextResponse.json(gstSettings))
   } catch (error) {
     console.error('Error fetching GST settings:', error)
     return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 })
@@ -77,16 +83,22 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const body = await request.json()
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
 
     const allowedKeys = Object.keys(GST_DEFAULTS)
     const updates: { key: string; value: string; description: string }[] = []
+    const bodyData = body as Record<string, unknown>
 
     for (const key of allowedKeys) {
-      if (body[key] !== undefined) {
+      if (bodyData[key] !== undefined) {
         updates.push({
-          key,
-          value: String(body[key]),
+          key: `${key}:${tenantId}`,
+          value: String(bodyData[key]),
           description: `GST setting: ${key}`,
         })
       }
@@ -110,9 +122,7 @@ export async function PUT(request: Request) {
       { updatedKeys: updates.map(u => u.key) }
     )
 
-    const response = NextResponse.json({ success: true, message: 'GST settings updated' })
-    setCorsHeaders(response)
-    return response
+    return setCorsHeaders(NextResponse.json({ success: true, message: 'GST settings updated' }))
   } catch (error) {
     console.error('Error updating GST settings:', error)
     return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 })

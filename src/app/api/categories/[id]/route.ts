@@ -7,6 +7,14 @@ import { setCorsHeaders } from '@/lib/cors'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
 import { validateCsrfRequest } from '@/lib/csrf'
+import { z } from 'zod'
+
+const updateCategorySchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  emoji: z.string().max(10).optional(),
+  color: z.string().max(30).optional(),
+  sortOrder: z.number().int().min(0).max(1000).optional(),
+})
 
 export async function PUT(
   request: Request,
@@ -40,8 +48,18 @@ export async function PUT(
 
   try {
     const { id } = await params
-    const body = await request.json()
-    const { name, emoji, color, sortOrder } = body
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+
+    const validation = updateCategorySchema.safeParse(body)
+    if (!validation.success) {
+      return NextResponse.json({ error: 'Validation failed' }, { status: 400 })
+    }
+    const { name, emoji, color, sortOrder } = validation.data
 
     const existing = await prisma.category.findFirst({
       where: { id, tenantId },
@@ -61,7 +79,7 @@ export async function PUT(
     }
 
     const category = await prisma.category.update({
-      where: { id },
+      where: { id, tenantId },
       data: {
         ...(name && { name: name.trim() }),
         ...(emoji && { emoji }),
@@ -72,9 +90,7 @@ export async function PUT(
 
     await auditLogger.logDataChange(null, tenantId, session.user?.id || '', 'category', category.id, 'UPDATE', { name: category.name })
 
-    const response = NextResponse.json(category)
-    setCorsHeaders(response)
-    return response
+    return setCorsHeaders(NextResponse.json(category))
   } catch (error) {
     console.error('Error updating category:', error)
     return NextResponse.json({ error: 'Failed to update category' }, { status: 500 })
@@ -114,6 +130,11 @@ export async function DELETE(
   try {
     const { id } = await params
 
+    let body: { reassignTo?: string } = {}
+    try {
+      body = await request.json()
+    } catch {}
+
     const existing = await prisma.category.findFirst({
       where: { id, tenantId },
     })
@@ -127,22 +148,27 @@ export async function DELETE(
     })
 
     if (productCount > 0) {
-      return NextResponse.json(
-        { error: `Cannot delete category "${existing.name}" - ${productCount} product(s) use it. Reassign products first.` },
-        { status: 409 }
-      )
+      if (!body.reassignTo) {
+        return NextResponse.json(
+          { error: `Cannot delete category "${existing.name}" - ${productCount} product(s) use it. Reassign products first.`, productCount },
+          { status: 409 }
+        )
+      }
+
+      await prisma.product.updateMany({
+        where: { tenantId, category: existing.name },
+        data: { category: body.reassignTo },
+      })
     }
 
     await prisma.category.update({
-      where: { id },
+      where: { id, tenantId },
       data: { isActive: false },
     })
 
     await auditLogger.logDataChange(null, tenantId, session.user?.id || '', 'category', id, 'DELETE', { name: existing.name })
 
-    const response = NextResponse.json({ success: true })
-    setCorsHeaders(response)
-    return response
+    return setCorsHeaders(NextResponse.json({ success: true }))
   } catch (error) {
     console.error('Error deleting category:', error)
     return NextResponse.json({ error: 'Failed to delete category' }, { status: 500 })

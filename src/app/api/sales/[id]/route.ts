@@ -4,6 +4,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import prisma from '@/lib/prisma'
 import { checkRateLimit, getClientIp } from '@/lib/security/rateLimit'
 import { extractTenantId } from '@/lib/tenant'
+import { setCorsHeaders } from '@/lib/cors'
 
 export async function GET(
   request: Request,
@@ -34,7 +35,12 @@ export async function GET(
     )
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     const { id } = await params
@@ -43,7 +49,6 @@ export async function GET(
       where: { id, tenantId },
       include: {
         product: true,
-        customer: true,
       },
     })
 
@@ -54,7 +59,8 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(sale)
+    const response = NextResponse.json(sale)
+    return setCorsHeaders(response, request.headers.get('origin'))
   } catch (error) {
     console.error('Failed to fetch sale:', error)
     return NextResponse.json(

@@ -9,6 +9,7 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const safeCallbackUrl = callbackUrl.startsWith('/') && !callbackUrl.startsWith('//') ? callbackUrl : '/dashboard'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -29,7 +30,7 @@ function LoginContent() {
         email,
         password,
         redirect: false,
-        callbackUrl,
+        callbackUrl: safeCallbackUrl,
       })
 
       if (result?.error === 'MFA_REQUIRED') {
@@ -40,7 +41,7 @@ function LoginContent() {
       if (result?.error) {
         setError('Invalid email or password')
       } else if (result?.ok) {
-        router.push(callbackUrl)
+        router.push(safeCallbackUrl)
       }
     } catch {
       setError('An error occurred. Please try again.')
@@ -64,7 +65,7 @@ function LoginContent() {
       })
 
       if (result?.ok) {
-        router.push(callbackUrl)
+        router.push(safeCallbackUrl)
       } else {
         setMfaError('Invalid code. Please try again.')
       }
@@ -184,25 +185,11 @@ function LoginContent() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
-                  Remember me
-                </label>
-              </div>
-
-              <div className="text-sm">
+            <div className="text-sm">
                 <Link href="/auth/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
                   Forgot your password?
                 </Link>
               </div>
-            </div>
 
             <div>
               <button

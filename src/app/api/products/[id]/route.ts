@@ -142,10 +142,44 @@ export async function PUT(
       )
     }
     
-    const product = await prisma.product.update({
-      where: { id, tenantId },
-      data: validation.data,
-    })
+    const prismaData = { ...validation.data }
+    if (prismaData.expiryDate && typeof prismaData.expiryDate === 'string') {
+      prismaData.expiryDate = new Date(prismaData.expiryDate) as unknown as string
+    }
+
+    const batchNumber = prismaData.batchNumber as string | undefined
+    const expiryDate = prismaData.expiryDate as unknown as Date | undefined
+
+    const lotOps = []
+    if (batchNumber) {
+      const existingLot = await prisma.lot.findUnique({
+        where: { tenantId_productId_batchNumber: { tenantId, productId: id, batchNumber } },
+      })
+
+      if (existingLot && expiryDate) {
+        lotOps.push(
+          prisma.lot.update({ where: { id: existingLot.id }, data: { expiryDate } })
+        )
+      } else if (!existingLot) {
+        lotOps.push(
+          prisma.lot.create({
+            data: {
+              productId: id,
+              tenantId,
+              batchNumber,
+              expiryDate: expiryDate || null,
+              quantity: existingProduct.quantity,
+              purchasePrice: (prismaData.purchasePrice as number) || Number(existingProduct.purchasePrice),
+            },
+          })
+        )
+      }
+    }
+
+    const [product] = await prisma.$transaction([
+      prisma.product.update({ where: { id, tenantId }, data: prismaData }),
+      ...lotOps,
+    ])
     
     await auditLogger.logDataChange(
       null,

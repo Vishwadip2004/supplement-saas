@@ -42,7 +42,12 @@ export async function POST(request: Request) {
     )
   }
 
-  const tenantId = extractTenantId(session)
+  let tenantId: string
+  try {
+    tenantId = extractTenantId(session)
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   try {
     let body: unknown
@@ -97,22 +102,23 @@ export async function POST(request: Request) {
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 14)
 
-    await prisma.$transaction(async (tx) => {
-      const isNewPasswordUsed = await checkPasswordHistory(tx, user.id, newPassword)
-      if (!isNewPasswordUsed) {
-        throw new Error('PASSWORD_REUSE')
-      }
+    const isPasswordSafe = await checkPasswordHistory(prisma, user.id, newPassword)
+    if (!isPasswordSafe) {
+      throw new Error('PASSWORD_REUSE')
+    }
 
-      await tx.user.update({
-        where: { id: user.id },
-        data: { password: hashedNewPassword, tokenVersion: { increment: 1 } },
-      })
+    // isPasswordSafe === true means password is NOT in history (safe to use)
+    // isPasswordSafe === false means password IS in history (reuse detected)
 
-      await addPasswordToHistory(tx, user.id, hashedNewPassword)
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedNewPassword, tokenVersion: { increment: 1 } },
+    })
 
-      await tx.session.deleteMany({
-        where: { userId: user.id },
-      })
+    await addPasswordToHistory(prisma, user.id, hashedNewPassword)
+
+    await prisma.session.deleteMany({
+      where: { userId: user.id },
     })
 
     await auditLogger.logAuth(
